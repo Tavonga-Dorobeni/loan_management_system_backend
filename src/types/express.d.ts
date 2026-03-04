@@ -4,7 +4,7 @@ import type { Roles } from '@/common/types/roles';
 declare global {
   namespace Express {
     interface UserContext {
-      id: string;
+      id: number;
       email: string;
       role: Roles;
     }

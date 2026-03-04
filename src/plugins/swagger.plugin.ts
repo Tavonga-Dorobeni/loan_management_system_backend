@@ -5,6 +5,9 @@ import swaggerUi from 'swagger-ui-express';
 import { config } from '@/common/config';
 
 export const registerSwagger = (app: Application): void => {
+  const serverUrl =
+    config.env === 'development' ? config.api.host : config.api.baseUrl;
+
   const specification = swaggerJSDoc({
     definition: {
       openapi: '3.0.3',
@@ -15,7 +18,7 @@ export const registerSwagger = (app: Application): void => {
       },
       servers: [
         {
-          url: config.api.baseUrl,
+          url: serverUrl,
         },
       ],
       components: {
@@ -28,7 +31,12 @@ export const registerSwagger = (app: Application): void => {
         },
       },
     },
-    apis: ['src/app.ts', 'src/modules/**/*.ts'],
+    apis: [
+      'src/app.ts',
+      'src/modules/auth/routes.ts',
+      'src/modules/users/routes.ts',
+      'src/modules/user_kyc/routes.ts',
+    ],
   });
 
   app.use('/docs', swaggerUi.serve, swaggerUi.setup(specification));

@@ -1,26 +1,19 @@
 import { sequelize } from '@/common/config/database.config';
-import { FileModel, initFileModel } from '@/modules/files/model';
-import { SessionModel, initSessionModel } from '@/modules/sessions/model';
 import { UserModel, initUserModel } from '@/modules/users/model';
-import {
-  ExampleResourceModel,
-  initExampleResourceModel,
-} from '@/modules/example_resource/model';
+import { UserKycModel, initUserKycModel } from '@/modules/user_kyc/model';
 
 export const initializeModels = (): void => {
   initUserModel(sequelize);
-  initFileModel(sequelize);
-  initSessionModel(sequelize);
-  initExampleResourceModel(sequelize);
+  initUserKycModel(sequelize);
 };
 
 export const setupAssociations = (): void => {
-  UserModel.hasMany(SessionModel, {
+  UserModel.hasMany(UserKycModel, {
     foreignKey: 'userId',
-    as: 'sessions',
+    as: 'kycDocuments',
   });
 
-  SessionModel.belongsTo(UserModel, {
+  UserKycModel.belongsTo(UserModel, {
     foreignKey: 'userId',
     as: 'user',
   });

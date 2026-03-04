@@ -4,8 +4,8 @@ import { config } from '@/common/config';
 import type { Roles } from '@/common/types/roles';
 import { UnauthorizedError } from '@/common/utils/errors';
 
-export interface JwtPayload {
-  sub: string;
+export interface AuthJwtPayload {
+  sub: number;
   email: string;
   role: Roles;
 }
@@ -15,15 +15,15 @@ export const authConfig = {
   expiresIn: config.auth.jwtExpiresIn,
 };
 
-export const signAccessToken = (payload: JwtPayload): string => {
+export const signAccessToken = (payload: AuthJwtPayload): string => {
   return jwt.sign(payload, authConfig.secret, {
     expiresIn: authConfig.expiresIn as SignOptions['expiresIn'],
   });
 };
 
-export const verifyAccessToken = (token: string): JwtPayload => {
+export const verifyAccessToken = (token: string): AuthJwtPayload => {
   try {
-    return jwt.verify(token, authConfig.secret) as JwtPayload;
+    return jwt.verify(token, authConfig.secret) as unknown as AuthJwtPayload;
   } catch (_error) {
     throw new UnauthorizedError('Invalid or expired token');
   }

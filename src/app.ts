@@ -10,10 +10,8 @@ import {
 import { loggingMiddleware } from '@/common/middleware/logging.middleware';
 import { apiRateLimiter } from '@/common/middleware/rate-limit.middleware';
 import authRoutes from '@/modules/auth/routes';
-import exampleResourceRoutes from '@/modules/example_resource/routes';
-import fileRoutes from '@/modules/files/routes';
-import sessionRoutes from '@/modules/sessions/routes';
 import userRoutes from '@/modules/users/routes';
+import userKycRoutes from '@/modules/user_kyc/routes';
 import { registerAuthPlugin } from '@/plugins/auth.plugin';
 import { registerSwagger } from '@/plugins/swagger.plugin';
 
@@ -86,9 +84,7 @@ export const createApp = (): express.Application => {
 
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/users', userRoutes);
-  app.use('/api/v1/files', fileRoutes);
-  app.use('/api/v1/sessions', sessionRoutes);
-  app.use('/api/v1/example-resource', exampleResourceRoutes);
+  app.use('/api/v1/user-kyc', userKycRoutes);
 
   app.use(notFoundMiddleware);
   app.use(errorMiddleware);

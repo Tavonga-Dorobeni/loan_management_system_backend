@@ -1,7 +1,7 @@
 import type { Roles } from '@/common/types/roles';
 
 export interface UserResponseDto {
-  id: string;
+  id: number;
   firstName: string;
   lastName: string;
   email: string;

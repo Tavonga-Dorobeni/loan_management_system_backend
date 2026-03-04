@@ -11,17 +11,50 @@ const router = Router();
  * /api/v1/auth/login:
  *   post:
  *     tags: [Auth]
- *     summary: Placeholder login endpoint
+ *     summary: Login endpoint
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
  *     responses:
  *       200:
- *         description: Placeholder access token payload
+ *         description: Access token payload
  * /api/v1/auth/register:
  *   post:
  *     tags: [Auth]
- *     summary: Placeholder registration endpoint
+ *     summary: Registration endpoint
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [firstName, lastName, email, password]
+ *             properties:
+ *               firstName:
+ *                 type: string
+ *               lastName:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [admin, loan_officer, credit_analyst, collections_officer, customer_support]
  *     responses:
  *       201:
- *         description: Placeholder registration result
+ *         description: Registration result
  */
 router.post(
   '/login',

@@ -1,70 +1,138 @@
+import bcrypt from 'bcrypt';
 import type {
+  ChangePasswordDto,
   CreateUserDto,
   UpdateUserDto,
   UserResponseDto,
 } from '@/modules/users/dto';
 
 import { Roles } from '@/common/types/roles';
-import { NotFoundError } from '@/common/utils/errors';
+import {
+  ConflictError,
+  NotFoundError,
+  UnauthorizedError,
+} from '@/common/utils/errors';
+import { UserModel } from '@/modules/users/model';
 
-const buildUserPlaceholder = (
-  id: string,
-  overrides: Partial<UserResponseDto> = {}
-): UserResponseDto => ({
-  id,
-  firstName: overrides.firstName ?? 'Placeholder',
-  lastName: overrides.lastName ?? 'User',
-  email: overrides.email ?? 'placeholder.user@example.com',
-  role: overrides.role ?? Roles.LOAN_OFFICER,
-  status: overrides.status ?? 'pending',
-  createdAt: overrides.createdAt ?? new Date().toISOString(),
-  updatedAt: overrides.updatedAt ?? new Date().toISOString(),
+const toUserResponse = (user: UserModel): UserResponseDto => ({
+  id: user.id,
+  firstName: user.firstName,
+  lastName: user.lastName,
+  email: user.email,
+  role: user.role,
+  status: user.status,
+  createdAt: user.createdAt.toISOString(),
+  updatedAt: user.updatedAt.toISOString(),
 });
 
 export class UserService {
   async list(): Promise<UserResponseDto[]> {
-    // TODO: Replace placeholder list with actual database-backed pagination and filtering.
-    return [buildUserPlaceholder('00000000-0000-0000-0000-000000000001')];
+    const users = await UserModel.findAll({
+      order: [['createdAt', 'DESC']],
+    });
+
+    return users.map(toUserResponse);
   }
 
-  async getById(userId: string): Promise<UserResponseDto> {
-    // TODO: Replace placeholder retrieval with a Sequelize query.
-    if (!userId) {
+  async getById(userId: number): Promise<UserResponseDto> {
+    const user = await UserModel.findByPk(userId);
+    if (!user) {
       throw new NotFoundError('User not found');
     }
 
-    return buildUserPlaceholder(userId);
+    return toUserResponse(user);
   }
 
   async create(payload: CreateUserDto): Promise<UserResponseDto> {
-    // TODO: Persist users through Sequelize and apply domain-specific rules.
-    return buildUserPlaceholder('00000000-0000-0000-0000-000000000002', {
+    const existing = await UserModel.findOne({
+      where: {
+        email: payload.email,
+      },
+    });
+
+    if (existing) {
+      throw new ConflictError('A user with this email already exists');
+    }
+
+    const passwordHash = payload.password
+      ? await bcrypt.hash(payload.password, 12)
+      : null;
+
+    const user = await UserModel.create({
       firstName: payload.firstName,
       lastName: payload.lastName,
       email: payload.email,
       role: payload.role ?? Roles.LOAN_OFFICER,
-      status: 'pending',
+      status: 'active',
+      passwordHash,
     });
+
+    return toUserResponse(user);
   }
 
   async update(
-    userId: string,
+    userId: number,
     payload: UpdateUserDto
   ): Promise<UserResponseDto> {
-    // TODO: Persist user updates and handle concurrency/versioning as needed.
-    return buildUserPlaceholder(userId, {
-      firstName: payload.firstName ?? 'Placeholder',
-      lastName: payload.lastName ?? 'User',
-      role: payload.role ?? Roles.LOAN_OFFICER,
-      status: payload.status ?? 'pending',
+    const user = await UserModel.findByPk(userId);
+    if (!user) {
+      throw new NotFoundError('User not found');
+    }
+
+    await user.update({
+      firstName: payload.firstName ?? user.firstName,
+      lastName: payload.lastName ?? user.lastName,
+      role: payload.role ?? user.role,
+      status: payload.status ?? user.status,
     });
+
+    return toUserResponse(user);
   }
 
-  async delete(userId: string): Promise<{ id: string; deleted: boolean }> {
-    // TODO: Replace placeholder delete with soft/hard delete based on project requirements.
+  async delete(userId: number): Promise<{ id: number; deleted: boolean }> {
+    const user = await UserModel.findByPk(userId);
+    if (!user) {
+      throw new NotFoundError('User not found');
+    }
+
+    await user.destroy();
+
     return {
       id: userId,
       deleted: true,
+    };
+  }
+
+  async changePassword(
+    userId: number,
+    payload: ChangePasswordDto
+  ): Promise<{ changed: boolean }> {
+    const user = await UserModel.findByPk(userId);
+    if (!user) {
+      throw new NotFoundError('User not found');
+    }
+
+    if (!user.passwordHash) {
+      throw new UnauthorizedError('Password is not set for this user');
+    }
+
+    const isCurrentPasswordValid = await bcrypt.compare(
+      payload.currentPassword,
+      user.passwordHash
+    );
+
+    if (!isCurrentPasswordValid) {
+      throw new UnauthorizedError('Current password is incorrect');
+    }
+
+    const newPasswordHash = await bcrypt.hash(payload.newPassword, 12);
+
+    await user.update({
+      passwordHash: newPasswordHash,
+    });
+
+    return {
+      changed: true,
     };
   }
 }

@@ -2,38 +2,75 @@ import bcrypt from 'bcrypt';
 
 import { signAccessToken } from '@/common/config/auth';
 import { Roles } from '@/common/types/roles';
+import { ConflictError, UnauthorizedError } from '@/common/utils/errors';
 import type { LoginDto, RegisterDto } from '@/modules/auth/dto';
+import { UserModel } from '@/modules/users/model';
 
 export class AuthService {
   async login(
     payload: LoginDto
   ): Promise<{ accessToken: string; user: Record<string, unknown> }> {
-    // TODO: Replace placeholder auth lookup and password verification with real user/session logic.
-    await bcrypt.hash(payload.password, 10);
+    const user = await UserModel.findOne({
+      where: {
+        email: payload.email,
+      },
+    });
+
+    if (!user || !user.passwordHash) {
+      throw new UnauthorizedError('Invalid credentials');
+    }
+
+    const passwordMatches = await bcrypt.compare(payload.password, user.passwordHash);
+    if (!passwordMatches) {
+      throw new UnauthorizedError('Invalid credentials');
+    }
+
+    const accessToken = signAccessToken({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    });
 
     return {
-      accessToken: signAccessToken({
-        sub: '20000000-0000-0000-0000-000000000001',
-        email: payload.email,
-        role: Roles.ADMIN,
-      }),
+      accessToken,
       user: {
-        id: '20000000-0000-0000-0000-000000000001',
-        email: payload.email,
-        role: Roles.ADMIN,
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        status: user.status,
       },
     };
   }
 
   async register(
     payload: RegisterDto
-  ): Promise<{ userId: string; status: string }> {
-    // TODO: Replace placeholder registration flow with actual persistence and verification steps.
-    await bcrypt.hash(payload.password, 10);
+  ): Promise<{ userId: number; status: string }> {
+    const existing = await UserModel.findOne({
+      where: {
+        email: payload.email,
+      },
+    });
+
+    if (existing) {
+      throw new ConflictError('A user with this email already exists');
+    }
+
+    const passwordHash = await bcrypt.hash(payload.password, 12);
+
+    const user = await UserModel.create({
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      email: payload.email,
+      role: payload.role ?? Roles.LOAN_OFFICER,
+      status: 'active',
+      passwordHash,
+    });
 
     return {
-      userId: '20000000-0000-0000-0000-000000000002',
-      status: `registered:${payload.email}`,
+      userId: user.id,
+      status: 'active',
     };
   }
 }
