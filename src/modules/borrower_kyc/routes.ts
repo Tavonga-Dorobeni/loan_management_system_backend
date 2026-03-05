@@ -3,11 +3,11 @@ import multer from 'multer';
 
 import { authMiddleware } from '@/common/middleware/auth.middleware';
 import { asyncHandler, validate } from '@/common/utils/validation';
-import { userKycController } from '@/modules/user_kyc/controller';
+import { borrowerKycController } from '@/modules/borrower_kyc/controller';
 import {
-  createUserKycSchema,
-  userIdParamSchema,
-} from '@/modules/user_kyc/validators';
+  borrowerIdParamSchema,
+  createBorrowerKycSchema,
+} from '@/modules/borrower_kyc/validators';
 
 const router = Router();
 const upload = multer({
@@ -19,10 +19,10 @@ const upload = multer({
 
 /**
  * @openapi
- * /api/v1/user-kyc/upload:
+ * /api/v1/borrower-kyc/upload:
  *   post:
- *     tags: [User KYC]
- *     summary: Upload a KYC document and create a user_kyc record.
+ *     tags: [Borrower KYC]
+ *     summary: Upload a KYC document and create a borrower_kyc record.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -31,9 +31,9 @@ const upload = multer({
  *         multipart/form-data:
  *           schema:
  *             type: object
- *             required: [userId, documentType, file]
+ *             required: [borrowerId, documentType, file]
  *             properties:
- *               userId:
+ *               borrowerId:
  *                 type: integer
  *               documentType:
  *                 type: string
@@ -44,43 +44,35 @@ const upload = multer({
  *     responses:
  *       201:
  *         description: KYC document uploaded and stored
- * /api/v1/user-kyc/user/{user_id}:
+ * /api/v1/borrower-kyc/borrower/{borrower_id}:
  *   get:
- *     tags: [User KYC]
- *     summary: List KYC documents for a user with signed read URLs.
+ *     tags: [Borrower KYC]
+ *     summary: List KYC documents for a borrower with signed read URLs.
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: user_id
+ *         name: borrower_id
  *         required: true
  *         schema:
  *           type: integer
  *     responses:
  *       200:
- *         description: User KYC documents
+ *         description: Borrower KYC documents
  */
 router.post(
   '/upload',
   authMiddleware,
   upload.single('file'),
-  validate({ body: createUserKycSchema }),
-  asyncHandler(userKycController.create.bind(userKycController))
-);
-
-router.post(
-  '/upload-url',
-  authMiddleware,
-  upload.single('file'),
-  validate({ body: createUserKycSchema }),
-  asyncHandler(userKycController.create.bind(userKycController))
+  validate({ body: createBorrowerKycSchema }),
+  asyncHandler(borrowerKycController.create.bind(borrowerKycController))
 );
 
 router.get(
-  '/user/:user_id',
+  '/borrower/:borrower_id',
   authMiddleware,
-  validate({ params: userIdParamSchema }),
-  asyncHandler(userKycController.listByUser.bind(userKycController))
+  validate({ params: borrowerIdParamSchema }),
+  asyncHandler(borrowerKycController.listByBorrower.bind(borrowerKycController))
 );
 
 export default router;

@@ -45,11 +45,11 @@ export class S3Service {
   }
 
   async generateUploadUrl(params: {
-    userId: number;
+    borrowerId: number;
     fileName: string;
     contentType: string;
   }): Promise<S3UploadUrlResult> {
-    const key = `kyc/${params.userId}/${Date.now()}-${params.fileName}`;
+    const key = `kyc/${params.borrowerId}/${Date.now()}-${params.fileName}`;
 
     const command = new PutObjectCommand({
       Bucket: config.integrations.s3.bucket,
@@ -69,12 +69,12 @@ export class S3Service {
   }
 
   async uploadKycDocument(params: {
-    userId: number;
+    borrowerId: number;
     fileName: string;
     contentType: string;
     body: Buffer;
   }): Promise<S3UploadResult> {
-    const key = `kyc/${params.userId}/${Date.now()}-${randomUUID()}-${params.fileName}`;
+    const key = `kyc/${params.borrowerId}/${Date.now()}-${randomUUID()}-${params.fileName}`;
 
     const command = new PutObjectCommand({
       Bucket: config.integrations.s3.bucket,

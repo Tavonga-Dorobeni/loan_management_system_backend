@@ -10,8 +10,11 @@ import {
 import { loggingMiddleware } from '@/common/middleware/logging.middleware';
 import { apiRateLimiter } from '@/common/middleware/rate-limit.middleware';
 import authRoutes from '@/modules/auth/routes';
+import borrowerKycRoutes from '@/modules/borrower_kyc/routes';
+import borrowerRoutes from '@/modules/borrowers/routes';
+import loanRoutes from '@/modules/loans/routes';
+import repaymentRoutes from '@/modules/repayments/routes';
 import userRoutes from '@/modules/users/routes';
-import userKycRoutes from '@/modules/user_kyc/routes';
 import { registerAuthPlugin } from '@/plugins/auth.plugin';
 import { registerSwagger } from '@/plugins/swagger.plugin';
 
@@ -83,8 +86,11 @@ export const createApp = (): express.Application => {
   );
 
   app.use('/api/v1/auth', authRoutes);
+  app.use('/api/v1/borrower-kyc', borrowerKycRoutes);
+  app.use('/api/v1/borrowers', borrowerRoutes);
+  app.use('/api/v1/loans', loanRoutes);
+  app.use('/api/v1/repayments', repaymentRoutes);
   app.use('/api/v1/users', userRoutes);
-  app.use('/api/v1/user-kyc', userKycRoutes);
 
   app.use(notFoundMiddleware);
   app.use(errorMiddleware);

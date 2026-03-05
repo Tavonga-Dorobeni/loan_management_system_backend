@@ -34,8 +34,11 @@ export const registerSwagger = (app: Application): void => {
     apis: [
       'src/app.ts',
       'src/modules/auth/routes.ts',
+      'src/modules/borrower_kyc/routes.ts',
+      'src/modules/borrowers/routes.ts',
+      'src/modules/loans/routes.ts',
+      'src/modules/repayments/routes.ts',
       'src/modules/users/routes.ts',
-      'src/modules/user_kyc/routes.ts',
     ],
   });
 

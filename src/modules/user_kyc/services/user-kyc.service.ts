@@ -31,7 +31,7 @@ export class UserKycService {
     }
 
     const upload = await s3Service.uploadKycDocument({
-      userId: payload.userId,
+      borrowerId: payload.userId,
       fileName: file.originalname,
       contentType: file.mimetype,
       body: file.buffer,

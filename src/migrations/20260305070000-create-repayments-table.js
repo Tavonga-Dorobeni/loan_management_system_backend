@@ -3,38 +3,34 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
-    await queryInterface.createTable('user_kyc', {
+    await queryInterface.createTable('repayments', {
       id: {
         allowNull: false,
         primaryKey: true,
-        type: Sequelize.UUID,
+        autoIncrement: true,
+        type: Sequelize.INTEGER.UNSIGNED,
       },
-      user_id: {
+      loan_id: {
         allowNull: false,
         type: Sequelize.INTEGER.UNSIGNED,
         references: {
-          model: 'users',
+          model: 'loans',
           key: 'id',
         },
         onUpdate: 'CASCADE',
         onDelete: 'CASCADE',
       },
-      document_type: {
+      amount: {
         allowNull: false,
-        type: Sequelize.ENUM(
-          'payslip',
-          'national_id',
-          'passport_sized_photo',
-          'application_form'
-        ),
+        type: Sequelize.DECIMAL(15, 2),
       },
-      document_url: {
+      transaction_date: {
         allowNull: false,
-        type: Sequelize.TEXT,
+        type: Sequelize.DATE,
       },
-      storage_key: {
+      status: {
         allowNull: false,
-        type: Sequelize.STRING(500),
+        type: Sequelize.STRING(100),
       },
       created_at: {
         allowNull: false,
@@ -50,6 +46,6 @@ module.exports = {
   },
 
   async down(queryInterface) {
-    await queryInterface.dropTable('user_kyc');
+    await queryInterface.dropTable('repayments');
   },
 };
