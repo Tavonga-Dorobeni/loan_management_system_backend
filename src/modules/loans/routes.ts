@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import multer from 'multer';
 
 import { authMiddleware } from '@/common/middleware/auth.middleware';
 import { asyncHandler, validate } from '@/common/utils/validation';
@@ -10,6 +11,12 @@ import {
 } from '@/modules/loans/validators';
 
 const router = Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+  },
+});
 
 /**
  * @openapi
@@ -158,8 +165,86 @@ const router = Router();
  *     responses:
  *       200:
  *         description: Loan deleted successfully
+ * /api/v1/loans/import/excel:
+ *   post:
+ *     tags: [Loans]
+ *     summary: Import loans from an Excel file. First row is treated as headers.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [file]
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Import completed
+ * /api/v1/loans/import/approvals/excel:
+ *   post:
+ *     tags: [Loans]
+ *     summary: Import loan approvals from an Excel file using C as reference, G as status, and O as message.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [file]
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Loan approval import completed
+ * /api/v1/loans/import/repayments/excel:
+ *   post:
+ *     tags: [Loans]
+ *     summary: Import loan repayments from Excel using C as reference number, F as transaction date, and G as amount.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [file]
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Loan repayment import completed
  */
 router.get('/', authMiddleware, asyncHandler(loanController.list.bind(loanController)));
+router.post(
+  '/import/excel',
+  authMiddleware,
+  upload.single('file'),
+  asyncHandler(loanController.importExcel.bind(loanController))
+);
+router.post(
+  '/import/approvals/excel',
+  authMiddleware,
+  upload.single('file'),
+  asyncHandler(loanController.importApprovalsExcel.bind(loanController))
+);
+router.post(
+  '/import/repayments/excel',
+  authMiddleware,
+  upload.single('file'),
+  asyncHandler(loanController.importRepaymentsExcel.bind(loanController))
+);
 router.post(
   '/',
   authMiddleware,

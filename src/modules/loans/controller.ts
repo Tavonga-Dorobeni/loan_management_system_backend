@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 
+import { ValidationError } from '@/common/utils/errors';
 import { sendSuccess } from '@/common/utils/response';
 import { loanService } from '@/modules/loans/services/loan.service';
 
@@ -27,6 +28,33 @@ export class LoanController {
   async delete(req: Request, res: Response): Promise<Response> {
     const result = await loanService.delete(Number(req.params.loan_id));
     return sendSuccess(res, result, 'Loan deleted successfully');
+  }
+
+  async importExcel(req: Request, res: Response): Promise<Response> {
+    if (!req.file) {
+      throw new ValidationError('Excel file is required');
+    }
+
+    const result = await loanService.importFromExcel(req.file);
+    return sendSuccess(res, result, 'Loan excel import completed');
+  }
+
+  async importApprovalsExcel(req: Request, res: Response): Promise<Response> {
+    if (!req.file) {
+      throw new ValidationError('Excel file is required');
+    }
+
+    const result = await loanService.importApprovalsFromExcel(req.file);
+    return sendSuccess(res, result, 'Loan approval excel import completed');
+  }
+
+  async importRepaymentsExcel(req: Request, res: Response): Promise<Response> {
+    if (!req.file) {
+      throw new ValidationError('Excel file is required');
+    }
+
+    const result = await loanService.importRepaymentsFromExcel(req.file);
+    return sendSuccess(res, result, 'Loan repayment excel import completed');
   }
 }
 
