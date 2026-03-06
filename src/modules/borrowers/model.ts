@@ -14,6 +14,7 @@ export class BorrowerModel extends Model<
   declare id: CreationOptional<number>;
   declare firstName: string;
   declare lastName: string;
+  declare ecNumber: string;
   declare idNumber: string;
   declare phoneNumber: string | null;
   declare email: string | null;
@@ -38,6 +39,12 @@ export const initBorrowerModel = (sequelize: Sequelize): typeof BorrowerModel =>
         type: DataTypes.STRING(100),
         allowNull: false,
         field: 'last_name',
+      },
+      ecNumber: {
+        type: DataTypes.STRING(100),
+        allowNull: false,
+        unique: true,
+        field: 'ec_number',
       },
       idNumber: {
         type: DataTypes.STRING(100),

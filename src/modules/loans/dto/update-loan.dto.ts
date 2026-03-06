@@ -1,7 +1,6 @@
 export interface UpdateLoanDto {
   borrowerId?: number;
   referenceNumber?: string;
-  ecNumber?: string;
   type?: string;
   status?: string;
   startDate?: string;

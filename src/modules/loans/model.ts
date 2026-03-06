@@ -14,7 +14,6 @@ export class LoanModel extends Model<
   declare id: CreationOptional<number>;
   declare borrowerId: number;
   declare referenceNumber: string;
-  declare ecNumber: string;
   declare type: string;
   declare status: string;
   declare startDate: Date;
@@ -47,11 +46,6 @@ export const initLoanModel = (sequelize: Sequelize): typeof LoanModel => {
         allowNull: false,
         unique: true,
         field: 'reference_number',
-      },
-      ecNumber: {
-        type: DataTypes.STRING(100),
-        allowNull: false,
-        field: 'ec_number',
       },
       type: {
         type: DataTypes.STRING(100),

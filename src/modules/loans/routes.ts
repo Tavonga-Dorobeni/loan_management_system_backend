@@ -36,7 +36,6 @@ const router = Router();
  *             required:
  *               - borrowerId
  *               - referenceNumber
- *               - ecNumber
  *               - type
  *               - status
  *               - startDate
@@ -47,8 +46,6 @@ const router = Router();
  *               borrowerId:
  *                 type: integer
  *               referenceNumber:
- *                 type: string
- *               ecNumber:
  *                 type: string
  *               type:
  *                 type: string
@@ -116,8 +113,6 @@ const router = Router();
  *               borrowerId:
  *                 type: integer
  *               referenceNumber:
- *                 type: string
- *               ecNumber:
  *                 type: string
  *               type:
  *                 type: string

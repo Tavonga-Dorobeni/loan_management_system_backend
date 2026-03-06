@@ -2,7 +2,6 @@ export interface LoanResponseDto {
   id: number;
   borrowerId: number;
   referenceNumber: string;
-  ecNumber: string;
   type: string;
   status: string;
   startDate: string;

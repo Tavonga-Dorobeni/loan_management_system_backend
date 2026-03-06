@@ -3,7 +3,6 @@ import Joi from 'joi';
 export const createLoanSchema = Joi.object({
   borrowerId: Joi.number().integer().positive().required(),
   referenceNumber: Joi.string().trim().max(100).required(),
-  ecNumber: Joi.string().trim().max(100).required(),
   type: Joi.string().trim().max(100).required(),
   status: Joi.string().trim().max(100).required(),
   startDate: Joi.date().iso().required(),

@@ -33,11 +33,13 @@ const router = Router();
  *         application/json:
  *           schema:
  *             type: object
- *             required: [firstName, lastName, idNumber]
+ *             required: [firstName, lastName, ecNumber, idNumber]
  *             properties:
  *               firstName:
  *                 type: string
  *               lastName:
+ *                 type: string
+ *               ecNumber:
  *                 type: string
  *               idNumber:
  *                 type: string
@@ -87,6 +89,8 @@ const router = Router();
  *               firstName:
  *                 type: string
  *               lastName:
+ *                 type: string
+ *               ecNumber:
  *                 type: string
  *               idNumber:
  *                 type: string

@@ -20,7 +20,6 @@ const toLoanResponse = (loan: LoanModel): LoanResponseDto => ({
   id: loan.id,
   borrowerId: loan.borrowerId,
   referenceNumber: loan.referenceNumber,
-  ecNumber: loan.ecNumber,
   type: loan.type,
   status: loan.status,
   startDate: loan.startDate.toISOString(),
@@ -72,7 +71,6 @@ export class LoanService {
     const loan = await LoanModel.create({
       borrowerId: payload.borrowerId,
       referenceNumber: payload.referenceNumber,
-      ecNumber: payload.ecNumber,
       type: payload.type,
       status: payload.status,
       startDate: new Date(payload.startDate),
@@ -121,7 +119,6 @@ export class LoanService {
     await loan.update({
       borrowerId: payload.borrowerId ?? loan.borrowerId,
       referenceNumber: payload.referenceNumber ?? loan.referenceNumber,
-      ecNumber: payload.ecNumber ?? loan.ecNumber,
       type: payload.type ?? loan.type,
       status: payload.status ?? loan.status,
       startDate: payload.startDate ? new Date(payload.startDate) : loan.startDate,
