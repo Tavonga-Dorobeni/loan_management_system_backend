@@ -1,11 +1,17 @@
 import { Router } from 'express';
 import multer from 'multer';
 
-import { authMiddleware } from '@/common/middleware/auth.middleware';
+import {
+  authMiddleware,
+  requireAnyAuthenticatedRole,
+  requireRole,
+} from '@/common/middleware/auth.middleware';
+import { Roles } from '@/common/types/roles';
 import { asyncHandler, validate } from '@/common/utils/validation';
 import { borrowerKycController } from '@/modules/borrower_kyc/controller';
 import {
   borrowerIdParamSchema,
+  borrowerKycQuerySchema,
   createBorrowerKycSchema,
 } from '@/modules/borrower_kyc/validators';
 
@@ -48,6 +54,7 @@ const upload = multer({
  *   get:
  *     tags: [Borrower KYC]
  *     summary: List KYC documents for a borrower with signed read URLs.
+ *     description: Returns a success envelope whose `data.items` contains the borrower's KYC documents.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -63,6 +70,7 @@ const upload = multer({
 router.post(
   '/upload',
   authMiddleware,
+  requireRole(Roles.ADMIN, Roles.LOAN_OFFICER),
   upload.single('file'),
   validate({ body: createBorrowerKycSchema }),
   asyncHandler(borrowerKycController.create.bind(borrowerKycController))
@@ -71,7 +79,8 @@ router.post(
 router.get(
   '/borrower/:borrower_id',
   authMiddleware,
-  validate({ params: borrowerIdParamSchema }),
+  requireAnyAuthenticatedRole,
+  validate({ params: borrowerIdParamSchema, query: borrowerKycQuerySchema }),
   asyncHandler(borrowerKycController.listByBorrower.bind(borrowerKycController))
 );
 

@@ -1,7 +1,7 @@
 import Joi from 'joi';
 
 export const changePasswordSchema = Joi.object({
-  currentPassword: Joi.string().min(8).required(),
+  currentPassword: Joi.string().min(8).optional(),
   newPassword: Joi.string()
     .min(8)
     .invalid(Joi.ref('currentPassword'))

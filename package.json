@@ -15,7 +15,10 @@
     "format:check": "prettier --check \"src/**/*.ts\" \"*.{js,json,mjs}\"",
     "db:migration:create": "sequelize-cli migration:generate --migrations-path src/migrations",
     "db:migrate": "sequelize-cli db:migrate",
-    "db:migrate:undo": "sequelize-cli db:migrate:undo"
+    "db:migrate:undo": "sequelize-cli db:migrate:undo",
+    "db:migrate:status": "sequelize-cli db:migrate:status",
+    "smoke:live": "node scripts/live-smoke.js",
+    "verify:release": "node scripts/verify-release.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.758.0",

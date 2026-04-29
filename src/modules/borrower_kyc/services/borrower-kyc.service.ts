@@ -10,14 +10,20 @@ import { BorrowerKycModel } from '@/modules/borrower_kyc/model';
 
 const mapBorrowerKycResponse = async (
   kycDocument: BorrowerKycModel
-): Promise<BorrowerKycResponseDto> => ({
-  id: kycDocument.id,
-  borrowerId: kycDocument.borrowerId,
-  documentType: kycDocument.documentType,
-  documentUrl: await s3Service.getSignedReadUrl(kycDocument.storageKey),
-  createdAt: kycDocument.createdAt.toISOString(),
-  updatedAt: kycDocument.updatedAt.toISOString(),
-});
+): Promise<BorrowerKycResponseDto> => {
+  const signedRead = await s3Service.getSignedReadUrlDetails(kycDocument.storageKey);
+
+  return {
+    id: kycDocument.id,
+    borrowerId: kycDocument.borrowerId,
+    documentType: kycDocument.documentType,
+    documentUrl: signedRead.signedUrl,
+    signedUrl: signedRead.signedUrl,
+    expiresAt: signedRead.expiresAt,
+    createdAt: kycDocument.createdAt.toISOString(),
+    updatedAt: kycDocument.updatedAt.toISOString(),
+  };
+};
 
 export class BorrowerKycService {
   async create(
@@ -35,6 +41,7 @@ export class BorrowerKycService {
 
     const upload = await s3Service.uploadKycDocument({
       borrowerId: payload.borrowerId,
+      documentType: payload.documentType,
       fileName: file.originalname,
       contentType: file.mimetype,
       body: file.buffer,
@@ -50,10 +57,14 @@ export class BorrowerKycService {
     return mapBorrowerKycResponse(kycDocument);
   }
 
-  async listByBorrower(borrowerId: number): Promise<BorrowerKycResponseDto[]> {
+  async listByBorrower(
+    borrowerId: number,
+    documentType?: string
+  ): Promise<BorrowerKycResponseDto[]> {
     const documents = await BorrowerKycModel.findAll({
       where: {
         borrowerId,
+        ...(documentType ? { documentType } : {}),
       },
       order: [['createdAt', 'DESC']],
     });

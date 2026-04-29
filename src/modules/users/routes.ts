@@ -1,6 +1,11 @@
 import { Router } from 'express';
 
-import { authMiddleware } from '@/common/middleware/auth.middleware';
+import {
+  authMiddleware,
+  requireAnyAuthenticatedRole,
+  requireRole,
+} from '@/common/middleware/auth.middleware';
+import { Roles } from '@/common/types/roles';
 import { asyncHandler, validate } from '@/common/utils/validation';
 import { userController } from '@/modules/users/controller';
 import {
@@ -8,6 +13,7 @@ import {
   createUserSchema,
   updateUserSchema,
   userIdParamSchema,
+  usersQuerySchema,
 } from '@/modules/users/validators';
 
 const router = Router();
@@ -55,11 +61,14 @@ const router = Router();
 router.get(
   '/',
   authMiddleware,
+  requireRole(Roles.ADMIN),
+  validate({ query: usersQuerySchema }),
   asyncHandler(userController.list.bind(userController))
 );
 router.post(
   '/',
   authMiddleware,
+  requireRole(Roles.ADMIN),
   validate({ body: createUserSchema }),
   asyncHandler(userController.create.bind(userController))
 );
@@ -144,24 +153,28 @@ router.post(
 router.get(
   '/:user_id',
   authMiddleware,
+  requireRole(Roles.ADMIN),
   validate({ params: userIdParamSchema }),
   asyncHandler(userController.getById.bind(userController))
 );
 router.put(
   '/:user_id',
   authMiddleware,
+  requireRole(Roles.ADMIN),
   validate({ params: userIdParamSchema, body: updateUserSchema }),
   asyncHandler(userController.update.bind(userController))
 );
 router.delete(
   '/:user_id',
   authMiddleware,
+  requireRole(Roles.ADMIN),
   validate({ params: userIdParamSchema }),
   asyncHandler(userController.delete.bind(userController))
 );
 router.post(
   '/:user_id/change-password',
   authMiddleware,
+  requireAnyAuthenticatedRole,
   validate({ params: userIdParamSchema, body: changePasswordSchema }),
   asyncHandler(userController.changePassword.bind(userController))
 );

@@ -10,6 +10,9 @@ declare module 'xlsx' {
       sheet: unknown,
       options?: Record<string, unknown>
     ): T[];
+    json_to_sheet(rows: Record<string, unknown>[]): unknown;
+    book_new(): unknown;
+    book_append_sheet(workbook: unknown, worksheet: unknown, name: string): void;
   };
 
   const XLSX: {
@@ -19,6 +22,10 @@ declare module 'xlsx' {
     };
     SSF: typeof SSF;
     utils: typeof utils;
+    write(
+      workbook: unknown,
+      options: { type: 'buffer'; bookType: 'xlsx' }
+    ): Buffer;
   };
 
   export default XLSX;

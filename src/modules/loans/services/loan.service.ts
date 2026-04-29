@@ -3,14 +3,20 @@ import type {
   LoanResponseDto,
   UpdateLoanDto,
 } from '@/modules/loans/dto';
+import type { BorrowerResponseDto } from '@/modules/borrowers/dto';
+import type { RepaymentResponseDto } from '@/modules/repayments/dto';
 
 import { Op } from 'sequelize';
 import XLSX from 'xlsx';
 
 import { sequelize } from '@/common/config/database.config';
-import { ConflictError, NotFoundError } from '@/common/utils/errors';
+import { ConflictError, ForbiddenError, NotFoundError } from '@/common/utils/errors';
+import { buildListEnvelope, getOffset, type ListEnvelope } from '@/common/utils/list';
+import type { Roles } from '@/common/types/roles';
+import { activityLogService } from '@/modules/activity_logs/services/activity-log.service';
 import { BorrowerModel } from '@/modules/borrowers/model';
 import { LoanModel } from '@/modules/loans/model';
+import { notificationService } from '@/modules/notifications/services/notification.service';
 import { RepaymentModel } from '@/modules/repayments/model';
 
 const toNumber = (value: number | string | null): number | null => {
@@ -39,14 +45,44 @@ const toLoanResponse = (loan: LoanModel): LoanResponseDto => ({
   updatedAt: loan.updatedAt.toISOString(),
 });
 
+const toBorrowerSummary = (
+  borrower: BorrowerModel
+): BorrowerResponseDto => ({
+  id: borrower.id,
+  firstName: borrower.firstName,
+  lastName: borrower.lastName,
+  ecNumber: borrower.ecNumber,
+  idNumber: borrower.idNumber,
+  phoneNumber: borrower.phoneNumber,
+  email: borrower.email,
+  createdAt: borrower.createdAt.toISOString(),
+  updatedAt: borrower.updatedAt.toISOString(),
+});
+
+const toRepaymentResponse = (
+  repayment: RepaymentModel
+): RepaymentResponseDto => ({
+  id: repayment.id,
+  loanId: repayment.loanId,
+  amount: Number(repayment.amount),
+  transactionDate: repayment.transactionDate.toISOString(),
+  status: repayment.status,
+  createdAt: repayment.createdAt.toISOString(),
+  updatedAt: repayment.updatedAt.toISOString(),
+});
+
 interface LoanImportFailure {
   row: number;
+  rowNumber: number;
+  reference: string | null;
   error: string;
 }
 
 interface LoanImportSummary {
   totalRows: number;
   processedRows: number;
+  successCount: number;
+  failureCount: number;
   createdBorrowers: number;
   createdLoans: number;
   failedRows: LoanImportFailure[];
@@ -55,6 +91,8 @@ interface LoanImportSummary {
 interface LoanApprovalImportSummary {
   totalRows: number;
   processedRows: number;
+  successCount: number;
+  failureCount: number;
   updatedLoans: number;
   failedRows: LoanImportFailure[];
 }
@@ -62,8 +100,30 @@ interface LoanApprovalImportSummary {
 interface LoanRepaymentImportSummary {
   totalRows: number;
   processedRows: number;
+  successCount: number;
+  failureCount: number;
   createdRepayments: number;
   failedRows: LoanImportFailure[];
+}
+
+export interface LoanListQuery {
+  page: number;
+  pageSize: number;
+  sortBy?: string;
+  sortOrder: 'asc' | 'desc';
+  search?: string;
+  borrowerId?: number;
+  status?: string;
+  type?: string;
+  startDateFrom?: string;
+  startDateTo?: string;
+  endDateFrom?: string;
+  endDateTo?: string;
+}
+
+interface ActorContext {
+  id: number;
+  role: Roles;
 }
 
 const cellAsString = (value: unknown): string => {
@@ -132,12 +192,49 @@ const monthsBetweenDates = (startDate: Date, endDate: Date): number => {
 };
 
 export class LoanService {
-  async list(): Promise<LoanResponseDto[]> {
-    const loans = await LoanModel.findAll({
-      order: [['createdAt', 'DESC']],
+  async list(query: LoanListQuery): Promise<ListEnvelope<LoanResponseDto>> {
+    const where: Record<string, unknown> = {};
+
+    if (query.borrowerId !== undefined) {
+      where.borrowerId = query.borrowerId;
+    }
+    if (query.status) {
+      where.status = query.status;
+    }
+    if (query.type) {
+      where.type = query.type;
+    }
+    if (query.search) {
+      where.referenceNumber = {
+        [Op.like]: `%${query.search}%`,
+      };
+    }
+    if (query.startDateFrom || query.startDateTo) {
+      where.startDate = {
+        ...(query.startDateFrom ? { [Op.gte]: new Date(query.startDateFrom) } : {}),
+        ...(query.startDateTo ? { [Op.lte]: new Date(query.startDateTo) } : {}),
+      };
+    }
+    if (query.endDateFrom || query.endDateTo) {
+      where.endDate = {
+        ...(query.endDateFrom ? { [Op.gte]: new Date(query.endDateFrom) } : {}),
+        ...(query.endDateTo ? { [Op.lte]: new Date(query.endDateTo) } : {}),
+      };
+    }
+
+    const { rows, count } = await LoanModel.findAndCountAll({
+      where,
+      order: [[query.sortBy ?? 'createdAt', query.sortOrder.toUpperCase()]],
+      limit: query.pageSize,
+      offset: getOffset(query.page, query.pageSize),
     });
 
-    return loans.map(toLoanResponse);
+    return buildListEnvelope(
+      rows.map(toLoanResponse),
+      query.page,
+      query.pageSize,
+      count
+    );
   }
 
   async getById(loanId: number): Promise<LoanResponseDto> {
@@ -185,10 +282,33 @@ export class LoanService {
     return toLoanResponse(loan);
   }
 
-  async update(loanId: number, payload: UpdateLoanDto): Promise<LoanResponseDto> {
+  async update(
+    loanId: number,
+    payload: UpdateLoanDto,
+    actorRole?: string
+  ): Promise<LoanResponseDto> {
     const loan = await LoanModel.findByPk(loanId);
     if (!loan) {
       throw new NotFoundError('Loan not found');
+    }
+
+    if (actorRole === 'credit_analyst') {
+      const disallowedFields = [
+        'borrowerId',
+        'referenceNumber',
+        'type',
+        'startDate',
+        'endDate',
+        'disbursementDate',
+        'repaymentAmount',
+        'totalAmount',
+        'amountPaid',
+        'amountDue',
+      ].filter((field) => payload[field as keyof UpdateLoanDto] !== undefined);
+
+      if (disallowedFields.length > 0) {
+        throw new ForbiddenError('Credit analysts can only update loan status and message');
+      }
     }
 
     if (payload.borrowerId !== undefined) {
@@ -236,6 +356,86 @@ export class LoanService {
     return toLoanResponse(loan);
   }
 
+  async getDetails(loanId: number): Promise<{
+    loan: LoanResponseDto;
+    borrower: BorrowerResponseDto;
+    balance: {
+      amountPaid: number | null;
+      amountDue: number | null;
+      repaymentAmount: number;
+    };
+  }> {
+    const loan = await LoanModel.findByPk(loanId);
+    if (!loan) {
+      throw new NotFoundError('Loan not found');
+    }
+
+    const borrower = await BorrowerModel.findByPk(loan.borrowerId);
+    if (!borrower) {
+      throw new NotFoundError('Borrower not found');
+    }
+
+    return {
+      loan: toLoanResponse(loan),
+      borrower: toBorrowerSummary(borrower),
+      balance: {
+        amountPaid: toNumber(loan.amountPaid),
+        amountDue: toNumber(loan.amountDue),
+        repaymentAmount: Number(loan.repaymentAmount),
+      },
+    };
+  }
+
+  async listRepayments(
+    loanId: number,
+    query: {
+      page: number;
+      pageSize: number;
+      sortBy?: string;
+      sortOrder: 'asc' | 'desc';
+      search?: string;
+      status?: string;
+      transactionDateFrom?: string;
+      transactionDateTo?: string;
+    }
+  ): Promise<ListEnvelope<RepaymentResponseDto>> {
+    const loan = await LoanModel.findByPk(loanId);
+    if (!loan) {
+      throw new NotFoundError('Loan not found');
+    }
+
+    const where: Record<string, unknown> = {
+      loanId,
+    };
+    if (query.status) {
+      where.status = query.status;
+    }
+    if (query.transactionDateFrom || query.transactionDateTo) {
+      where.transactionDate = {
+        ...(query.transactionDateFrom
+          ? { [Op.gte]: new Date(query.transactionDateFrom) }
+          : {}),
+        ...(query.transactionDateTo
+          ? { [Op.lte]: new Date(query.transactionDateTo) }
+          : {}),
+      };
+    }
+
+    const { rows, count } = await RepaymentModel.findAndCountAll({
+      where,
+      order: [[query.sortBy ?? 'createdAt', query.sortOrder.toUpperCase()]],
+      limit: query.pageSize,
+      offset: getOffset(query.page, query.pageSize),
+    });
+
+    return buildListEnvelope(
+      rows.map(toRepaymentResponse),
+      query.page,
+      query.pageSize,
+      count
+    );
+  }
+
   async delete(loanId: number): Promise<{ id: number; deleted: boolean }> {
     const loan = await LoanModel.findByPk(loanId);
     if (!loan) {
@@ -250,7 +450,10 @@ export class LoanService {
     };
   }
 
-  async importFromExcel(file: Express.Multer.File): Promise<LoanImportSummary> {
+  async importFromExcel(
+    file: Express.Multer.File,
+    actor?: ActorContext
+  ): Promise<LoanImportSummary> {
     const workbook = XLSX.read(file.buffer, {
       type: 'buffer',
       cellDates: true,
@@ -262,6 +465,8 @@ export class LoanService {
       return {
         totalRows: 0,
         processedRows: 0,
+        successCount: 0,
+        failureCount: 0,
         createdBorrowers: 0,
         createdLoans: 0,
         failedRows: [],
@@ -279,6 +484,8 @@ export class LoanService {
     const summary: LoanImportSummary = {
       totalRows: dataRows.length,
       processedRows: 0,
+      successCount: 0,
+      failureCount: 0,
       createdBorrowers: 0,
       createdLoans: 0,
       failedRows: [],
@@ -287,6 +494,7 @@ export class LoanService {
     for (let index = 0; index < dataRows.length; index += 1) {
       const row = (dataRows[index] ?? []) as unknown[];
       const rowNumber = index + 2;
+      const referenceNumber = cellAsString(row[0]);
 
       const hasData = row.some((value: unknown) => cellAsString(value) !== '');
       if (!hasData) {
@@ -295,7 +503,6 @@ export class LoanService {
 
       try {
         await sequelize.transaction(async (transaction) => {
-          const referenceNumber = cellAsString(row[0]);
           const idNumber = cellAsString(row[1]);
           const ecNumber = cellAsString(row[2]);
           const loanType = cellAsString(row[3]);
@@ -344,6 +551,20 @@ export class LoanService {
             );
 
             summary.createdBorrowers += 1;
+            await activityLogService.record({
+              actorUserId: actor?.id,
+              actorRole: actor?.role,
+              entityType: 'borrower',
+              entityId: borrower.id,
+              action: 'borrower.created',
+              summary: `${actor?.id ? `User #${actor.id}` : 'System'} created borrower ${borrower.firstName} ${borrower.lastName} via import`,
+              metadata: {
+                referenceNumber,
+                rowNumber,
+              },
+              sourceType: 'import',
+              sourceReference: file.originalname,
+            });
           }
 
           const existingLoan = await LoanModel.findOne({
@@ -357,7 +578,7 @@ export class LoanService {
             throw new Error(`Loan with reference number "${referenceNumber}" already exists`);
           }
 
-          await LoanModel.create(
+          const createdLoan = await LoanModel.create(
             {
               borrowerId: borrower.id,
               referenceNumber,
@@ -375,8 +596,33 @@ export class LoanService {
             { transaction }
           );
 
+          await activityLogService.record({
+            actorUserId: actor?.id,
+            actorRole: actor?.role,
+            entityType: 'loan',
+            entityId: createdLoan.id,
+            action: 'loan.created',
+            summary: `${actor?.id ? `User #${actor.id}` : 'System'} created loan ${createdLoan.referenceNumber} via import`,
+            metadata: {
+              referenceNumber: createdLoan.referenceNumber,
+              rowNumber,
+            },
+            sourceType: 'import',
+            sourceReference: file.originalname,
+          });
+          await notificationService.publish({
+            eventType: 'loan.created',
+            actorUserId: actor?.id,
+            reference: createdLoan.referenceNumber,
+            metadata: {
+              loanId: createdLoan.id,
+              referenceNumber: createdLoan.referenceNumber,
+            },
+          });
+
           summary.createdLoans += 1;
           summary.processedRows += 1;
+          summary.successCount += 1;
         });
       } catch (error) {
         const message =
@@ -384,8 +630,11 @@ export class LoanService {
 
         summary.failedRows.push({
           row: rowNumber,
+          rowNumber,
+          reference: referenceNumber || null,
           error: message,
         });
+        summary.failureCount = summary.failedRows.length;
       }
     }
 
@@ -393,7 +642,8 @@ export class LoanService {
   }
 
   async importApprovalsFromExcel(
-    file: Express.Multer.File
+    file: Express.Multer.File,
+    actor?: ActorContext
   ): Promise<LoanApprovalImportSummary> {
     const workbook = XLSX.read(file.buffer, {
       type: 'buffer',
@@ -406,6 +656,8 @@ export class LoanService {
       return {
         totalRows: 0,
         processedRows: 0,
+        successCount: 0,
+        failureCount: 0,
         updatedLoans: 0,
         failedRows: [],
       };
@@ -422,6 +674,8 @@ export class LoanService {
     const summary: LoanApprovalImportSummary = {
       totalRows: dataRows.length,
       processedRows: 0,
+      successCount: 0,
+      failureCount: 0,
       updatedLoans: 0,
       failedRows: [],
     };
@@ -429,6 +683,7 @@ export class LoanService {
     for (let index = 0; index < dataRows.length; index += 1) {
       const row = (dataRows[index] ?? []) as unknown[];
       const rowNumber = index + 2;
+      const referenceNumber = cellAsString(row[2]);
 
       const hasData = row.some((value: unknown) => cellAsString(value) !== '');
       if (!hasData) {
@@ -436,7 +691,6 @@ export class LoanService {
       }
 
       try {
-        const referenceNumber = cellAsString(row[2]);
         const status = cellAsString(row[6]);
         const messageValue = cellAsString(row[14]);
 
@@ -463,6 +717,7 @@ export class LoanService {
           ? Number((Number(loan.repaymentAmount) * monthsBetweenDates(loan.startDate, loan.endDate)).toFixed(2))
           : loan.amountDue;
 
+        const previousStatus = loan.status;
         await loan.update({
           status,
           message: messageValue || null,
@@ -470,16 +725,48 @@ export class LoanService {
           amountDue: computedAmountDue,
         });
 
+        if (previousStatus !== status) {
+          await activityLogService.record({
+            actorUserId: actor?.id,
+            actorRole: actor?.role,
+            entityType: 'loan',
+            entityId: loan.id,
+            action: 'loan.status.changed',
+            summary: `${actor?.id ? `User #${actor.id}` : 'System'} changed status of loan ${loan.referenceNumber} from ${previousStatus} to ${status} via import`,
+            metadata: {
+              from: previousStatus,
+              to: status,
+              rowNumber,
+            },
+            sourceType: 'import',
+            sourceReference: file.originalname,
+          });
+          await notificationService.publish({
+            eventType: 'loan.status.changed',
+            actorUserId: actor?.id,
+            reference: loan.referenceNumber,
+            metadata: {
+              loanId: loan.id,
+              from: previousStatus,
+              to: status,
+            },
+          });
+        }
+
         summary.updatedLoans += 1;
         summary.processedRows += 1;
+        summary.successCount += 1;
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Unknown import error';
 
         summary.failedRows.push({
           row: rowNumber,
+          rowNumber,
+          reference: referenceNumber || null,
           error: message,
         });
+        summary.failureCount = summary.failedRows.length;
       }
     }
 
@@ -487,7 +774,8 @@ export class LoanService {
   }
 
   async importRepaymentsFromExcel(
-    file: Express.Multer.File
+    file: Express.Multer.File,
+    actor?: ActorContext
   ): Promise<LoanRepaymentImportSummary> {
     const workbook = XLSX.read(file.buffer, {
       type: 'buffer',
@@ -500,6 +788,8 @@ export class LoanService {
       return {
         totalRows: 0,
         processedRows: 0,
+        successCount: 0,
+        failureCount: 0,
         createdRepayments: 0,
         failedRows: [],
       };
@@ -516,6 +806,8 @@ export class LoanService {
     const summary: LoanRepaymentImportSummary = {
       totalRows: dataRows.length,
       processedRows: 0,
+      successCount: 0,
+      failureCount: 0,
       createdRepayments: 0,
       failedRows: [],
     };
@@ -523,6 +815,7 @@ export class LoanService {
     for (let index = 0; index < dataRows.length; index += 1) {
       const row = (dataRows[index] ?? []) as unknown[];
       const rowNumber = index + 2;
+      const referenceNumber = cellAsString(row[2]);
 
       const hasData = row.some((value: unknown) => cellAsString(value) !== '');
       if (!hasData) {
@@ -531,7 +824,6 @@ export class LoanService {
 
       try {
         await sequelize.transaction(async (transaction) => {
-          const referenceNumber = cellAsString(row[2]);
           const transactionDate = cellAsDate(row[5]);
           const amount = cellAsNumber(row[6]);
 
@@ -556,7 +848,7 @@ export class LoanService {
             repaymentStatus = amount > expectedRepaymentAmount ? 'OVER' : 'UNDER';
           }
 
-          await RepaymentModel.create(
+          const repayment = await RepaymentModel.create(
             {
               loanId: loan.id,
               amount,
@@ -565,6 +857,34 @@ export class LoanService {
             },
             { transaction }
           );
+
+          await activityLogService.record({
+            actorUserId: actor?.id,
+            actorRole: actor?.role,
+            entityType: 'repayment',
+            entityId: repayment.id,
+            action: 'repayment.created',
+            summary: `${actor?.id ? `User #${actor.id}` : 'System'} created repayment for loan ${loan.referenceNumber} via import`,
+            metadata: {
+              amount,
+              status: repaymentStatus,
+              rowNumber,
+            },
+            sourceType: 'import',
+            sourceReference: file.originalname,
+          });
+          if (repaymentStatus === 'UNDER') {
+            await notificationService.publish({
+              eventType: 'repayment.created.under',
+              actorUserId: actor?.id,
+              reference: loan.referenceNumber,
+              metadata: {
+                repaymentId: repayment.id,
+                loanId: loan.id,
+                amount,
+              },
+            });
+          }
 
           const updatedAmountDue = Number((Number(loan.amountDue ?? 0) - amount).toFixed(2));
           const updatedAmountPaid = Number((Number(loan.amountPaid ?? 0) + amount).toFixed(2));
@@ -580,14 +900,18 @@ export class LoanService {
 
         summary.createdRepayments += 1;
         summary.processedRows += 1;
+        summary.successCount += 1;
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Unknown import error';
 
         summary.failedRows.push({
           row: rowNumber,
+          rowNumber,
+          reference: referenceNumber || null,
           error: message,
         });
+        summary.failureCount = summary.failedRows.length;
       }
     }
 

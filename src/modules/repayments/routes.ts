@@ -1,11 +1,17 @@
 import { Router } from 'express';
 
-import { authMiddleware } from '@/common/middleware/auth.middleware';
+import {
+  authMiddleware,
+  requireAnyAuthenticatedRole,
+  requireRole,
+} from '@/common/middleware/auth.middleware';
+import { Roles } from '@/common/types/roles';
 import { asyncHandler, validate } from '@/common/utils/validation';
 import { repaymentController } from '@/modules/repayments/controller';
 import {
   createRepaymentSchema,
   repaymentIdParamSchema,
+  repaymentsQuerySchema,
   updateRepaymentSchema,
 } from '@/modules/repayments/validators';
 
@@ -33,7 +39,7 @@ const router = Router();
  *         application/json:
  *           schema:
  *             type: object
- *             required: [loanId, amount, transactionDate, status]
+ *             required: [loanId, amount, transactionDate]
  *             properties:
  *               loanId:
  *                 type: integer
@@ -42,8 +48,6 @@ const router = Router();
  *               transactionDate:
  *                 type: string
  *                 format: date-time
- *               status:
- *                 type: string
  *     responses:
  *       201:
  *         description: Repayment created successfully
@@ -87,8 +91,6 @@ const router = Router();
  *               transactionDate:
  *                 type: string
  *                 format: date-time
- *               status:
- *                 type: string
  *     responses:
  *       200:
  *         description: Repayment updated successfully
@@ -110,29 +112,35 @@ const router = Router();
 router.get(
   '/',
   authMiddleware,
+  requireAnyAuthenticatedRole,
+  validate({ query: repaymentsQuerySchema }),
   asyncHandler(repaymentController.list.bind(repaymentController))
 );
 router.post(
   '/',
   authMiddleware,
+  requireRole(Roles.ADMIN, Roles.COLLECTIONS_OFFICER),
   validate({ body: createRepaymentSchema }),
   asyncHandler(repaymentController.create.bind(repaymentController))
 );
 router.get(
   '/:repayment_id',
   authMiddleware,
+  requireAnyAuthenticatedRole,
   validate({ params: repaymentIdParamSchema }),
   asyncHandler(repaymentController.getById.bind(repaymentController))
 );
 router.put(
   '/:repayment_id',
   authMiddleware,
+  requireRole(Roles.ADMIN, Roles.COLLECTIONS_OFFICER),
   validate({ params: repaymentIdParamSchema, body: updateRepaymentSchema }),
   asyncHandler(repaymentController.update.bind(repaymentController))
 );
 router.delete(
   '/:repayment_id',
   authMiddleware,
+  requireRole(Roles.ADMIN, Roles.COLLECTIONS_OFFICER),
   validate({ params: repaymentIdParamSchema }),
   asyncHandler(repaymentController.delete.bind(repaymentController))
 );

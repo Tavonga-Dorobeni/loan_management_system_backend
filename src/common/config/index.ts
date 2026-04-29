@@ -27,6 +27,12 @@ const envSchema = Joi.object({
   REDIS_DB: Joi.number().default(0),
   RESEND_API_KEY: Joi.string().allow('').default(''),
   RESEND_FROM: Joi.string().email().default('no-reply@example.com'),
+  S3_REGION: Joi.string().allow('').default(''),
+  S3_BUCKET: Joi.string().allow('').default(''),
+  S3_ACCESS_KEY_ID: Joi.string().allow('').default(''),
+  S3_SECRET_ACCESS_KEY: Joi.string().allow('').default(''),
+  S3_SIGNED_URL_TTL: Joi.number().optional(),
+  S3_PUBLIC_URL_BASE: Joi.string().allow('').default(''),
   AWS_REGION: Joi.string().default('us-east-1'),
   AWS_S3_BUCKET: Joi.string().default('loan-documents-dev'),
   AWS_ACCESS_KEY_ID: Joi.string().allow('').default(''),
@@ -88,12 +94,15 @@ export const config = {
       from: value.RESEND_FROM as string,
     },
     s3: {
-      region: value.AWS_REGION as string,
-      bucket: value.AWS_S3_BUCKET as string,
-      accessKeyId: value.AWS_ACCESS_KEY_ID as string,
-      secretAccessKey: value.AWS_SECRET_ACCESS_KEY as string,
-      signedUrlTtl: value.AWS_S3_SIGNED_URL_TTL as number,
-      publicBaseUrl: value.AWS_S3_PUBLIC_BASE_URL as string,
+      region: (value.S3_REGION || value.AWS_REGION) as string,
+      bucket: (value.S3_BUCKET || value.AWS_S3_BUCKET) as string,
+      accessKeyId: (value.S3_ACCESS_KEY_ID || value.AWS_ACCESS_KEY_ID) as string,
+      secretAccessKey: (value.S3_SECRET_ACCESS_KEY ||
+        value.AWS_SECRET_ACCESS_KEY) as string,
+      signedUrlTtl: (value.S3_SIGNED_URL_TTL ??
+        value.AWS_S3_SIGNED_URL_TTL) as number,
+      publicBaseUrl: (value.S3_PUBLIC_URL_BASE ||
+        value.AWS_S3_PUBLIC_BASE_URL) as string,
     },
   },
   log: {

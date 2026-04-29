@@ -13,7 +13,7 @@ export class AppError extends Error {
 
 export class ValidationError extends AppError {
   constructor(message = 'Validation failed') {
-    super(message, 400);
+    super(message, 422);
   }
 }
 
@@ -32,5 +32,11 @@ export class NotFoundError extends AppError {
 export class ConflictError extends AppError {
   constructor(message = 'Conflict detected') {
     super(message, 409);
+  }
+}
+
+export class ForbiddenError extends AppError {
+  constructor(message = 'Forbidden') {
+    super(message, 403);
   }
 }

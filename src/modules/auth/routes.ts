@@ -1,5 +1,7 @@
 import { Router } from 'express';
 
+import { authMiddleware, requireRole } from '@/common/middleware/auth.middleware';
+import { Roles } from '@/common/types/roles';
 import { asyncHandler, validate } from '@/common/utils/validation';
 import { authController } from '@/modules/auth/controller';
 import { loginSchema, registerSchema } from '@/modules/auth/validators';
@@ -27,7 +29,38 @@ const router = Router();
  *                 type: string
  *     responses:
  *       200:
- *         description: Access token payload
+ *         description: Login result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         firstName:
+ *                           type: string
+ *                         lastName:
+ *                           type: string
+ *                         email:
+ *                           type: string
+ *                           format: email
+ *                         role:
+ *                           type: string
+ *                         status:
+ *                           type: string
+ *                     token:
+ *                       type: string
+ *                 message:
+ *                   type: string
  * /api/v1/auth/register:
  *   post:
  *     tags: [Auth]
@@ -63,6 +96,8 @@ router.post(
 );
 router.post(
   '/register',
+  //authMiddleware,
+  //requireRole(Roles.ADMIN),
   validate({ body: registerSchema }),
   asyncHandler(authController.register.bind(authController))
 );

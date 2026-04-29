@@ -9,14 +9,14 @@ import { UserModel } from '@/modules/users/model';
 export class AuthService {
   async login(
     payload: LoginDto
-  ): Promise<{ accessToken: string; user: Record<string, unknown> }> {
+  ): Promise<{ token: string; user: Record<string, unknown> }> {
     const user = await UserModel.findOne({
       where: {
         email: payload.email,
       },
     });
 
-    if (!user || !user.passwordHash) {
+    if (!user || !user.passwordHash || user.status === 'disabled') {
       throw new UnauthorizedError('Invalid credentials');
     }
 
@@ -25,14 +25,14 @@ export class AuthService {
       throw new UnauthorizedError('Invalid credentials');
     }
 
-    const accessToken = signAccessToken({
+    const token = signAccessToken({
       sub: user.id,
       email: user.email,
       role: user.role,
     });
 
     return {
-      accessToken,
+      token,
       user: {
         id: user.id,
         email: user.email,
@@ -46,7 +46,7 @@ export class AuthService {
 
   async register(
     payload: RegisterDto
-  ): Promise<{ userId: number; status: string }> {
+  ): Promise<{ user: Record<string, unknown> }> {
     const existing = await UserModel.findOne({
       where: {
         email: payload.email,
@@ -69,8 +69,14 @@ export class AuthService {
     });
 
     return {
-      userId: user.id,
-      status: 'active',
+      user: {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+      },
     };
   }
 }

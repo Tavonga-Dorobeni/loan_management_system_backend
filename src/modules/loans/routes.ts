@@ -1,14 +1,21 @@
 import { Router } from 'express';
 import multer from 'multer';
 
-import { authMiddleware } from '@/common/middleware/auth.middleware';
+import {
+  authMiddleware,
+  requireAnyAuthenticatedRole,
+  requireRole,
+} from '@/common/middleware/auth.middleware';
+import { Roles } from '@/common/types/roles';
 import { asyncHandler, validate } from '@/common/utils/validation';
 import { loanController } from '@/modules/loans/controller';
 import {
   createLoanSchema,
   loanIdParamSchema,
+  loansQuerySchema,
   updateLoanSchema,
 } from '@/modules/loans/validators';
+import { repaymentsQuerySchema } from '@/modules/repayments/validators';
 
 const router = Router();
 const upload = multer({
@@ -226,46 +233,73 @@ const upload = multer({
  *       200:
  *         description: Loan repayment import completed
  */
-router.get('/', authMiddleware, asyncHandler(loanController.list.bind(loanController)));
+router.get(
+  '/',
+  authMiddleware,
+  requireAnyAuthenticatedRole,
+  validate({ query: loansQuerySchema }),
+  asyncHandler(loanController.list.bind(loanController))
+);
 router.post(
   '/import/excel',
   authMiddleware,
+  requireRole(Roles.ADMIN, Roles.LOAN_OFFICER),
   upload.single('file'),
   asyncHandler(loanController.importExcel.bind(loanController))
 );
 router.post(
   '/import/approvals/excel',
   authMiddleware,
+  requireRole(Roles.ADMIN, Roles.CREDIT_ANALYST),
   upload.single('file'),
   asyncHandler(loanController.importApprovalsExcel.bind(loanController))
 );
 router.post(
   '/import/repayments/excel',
   authMiddleware,
+  requireRole(Roles.ADMIN, Roles.COLLECTIONS_OFFICER),
   upload.single('file'),
   asyncHandler(loanController.importRepaymentsExcel.bind(loanController))
 );
 router.post(
   '/',
   authMiddleware,
+  requireRole(Roles.ADMIN, Roles.LOAN_OFFICER),
   validate({ body: createLoanSchema }),
   asyncHandler(loanController.create.bind(loanController))
 );
 router.get(
+  '/:loan_id/details',
+  authMiddleware,
+  requireAnyAuthenticatedRole,
+  validate({ params: loanIdParamSchema }),
+  asyncHandler(loanController.getDetails.bind(loanController))
+);
+router.get(
+  '/:loan_id/repayments',
+  authMiddleware,
+  requireAnyAuthenticatedRole,
+  validate({ params: loanIdParamSchema, query: repaymentsQuerySchema }),
+  asyncHandler(loanController.listRepayments.bind(loanController))
+);
+router.get(
   '/:loan_id',
   authMiddleware,
+  requireAnyAuthenticatedRole,
   validate({ params: loanIdParamSchema }),
   asyncHandler(loanController.getById.bind(loanController))
 );
 router.put(
   '/:loan_id',
   authMiddleware,
+  requireRole(Roles.ADMIN, Roles.LOAN_OFFICER, Roles.CREDIT_ANALYST),
   validate({ params: loanIdParamSchema, body: updateLoanSchema }),
   asyncHandler(loanController.update.bind(loanController))
 );
 router.delete(
   '/:loan_id',
   authMiddleware,
+  requireRole(Roles.ADMIN),
   validate({ params: loanIdParamSchema }),
   asyncHandler(loanController.delete.bind(loanController))
 );

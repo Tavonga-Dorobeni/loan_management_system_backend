@@ -10,10 +10,14 @@ import {
 import { loggingMiddleware } from '@/common/middleware/logging.middleware';
 import { apiRateLimiter } from '@/common/middleware/rate-limit.middleware';
 import authRoutes from '@/modules/auth/routes';
+import activityLogRoutes from '@/modules/activity_logs/routes';
 import borrowerKycRoutes from '@/modules/borrower_kyc/routes';
 import borrowerRoutes from '@/modules/borrowers/routes';
+import dashboardRoutes from '@/modules/dashboard/routes';
 import loanRoutes from '@/modules/loans/routes';
+import notificationRoutes from '@/modules/notifications/routes';
 import repaymentRoutes from '@/modules/repayments/routes';
+import reportRoutes from '@/modules/reports/routes';
 import userRoutes from '@/modules/users/routes';
 import { registerAuthPlugin } from '@/plugins/auth.plugin';
 import { registerSwagger } from '@/plugins/swagger.plugin';
@@ -86,10 +90,14 @@ export const createApp = (): express.Application => {
   );
 
   app.use('/api/v1/auth', authRoutes);
+  app.use('/api/v1/activity-logs', activityLogRoutes);
   app.use('/api/v1/borrower-kyc', borrowerKycRoutes);
   app.use('/api/v1/borrowers', borrowerRoutes);
+  app.use('/api/v1/dashboard', dashboardRoutes);
   app.use('/api/v1/loans', loanRoutes);
+  app.use('/api/v1/notifications', notificationRoutes);
   app.use('/api/v1/repayments', repaymentRoutes);
+  app.use('/api/v1/reports', reportRoutes);
   app.use('/api/v1/users', userRoutes);
 
   app.use(notFoundMiddleware);

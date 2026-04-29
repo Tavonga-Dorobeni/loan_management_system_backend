@@ -6,6 +6,7 @@ import { logger } from '@/common/utils/logger';
 const isDocsAssetRequest = (url: string): boolean => {
   return (
     url.startsWith('/docs') ||
+    url.startsWith('/api/v1/docs') ||
     url.includes('swagger-ui') ||
     url.includes('favicon-32x32') ||
     url.includes('favicon-16x16')

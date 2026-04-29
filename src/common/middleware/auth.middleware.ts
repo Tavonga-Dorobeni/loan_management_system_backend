@@ -1,7 +1,8 @@
 import type { NextFunction, Request, Response } from 'express';
 
 import { verifyAccessToken } from '@/common/config/auth';
-import { UnauthorizedError } from '@/common/utils/errors';
+import { roleValues, type Roles } from '@/common/types/roles';
+import { ForbiddenError, UnauthorizedError } from '@/common/utils/errors';
 
 export const authMiddleware = (
   req: Request,
@@ -30,3 +31,22 @@ export const authMiddleware = (
 
   next();
 };
+
+export const requireRole =
+  (...roles: Roles[]) =>
+  (req: Request, _res: Response, next: NextFunction): void => {
+    const user = req.user;
+    if (!user) {
+      next(new UnauthorizedError('Missing authenticated user'));
+      return;
+    }
+
+    if (!roles.includes(user.role)) {
+      next(new ForbiddenError('You do not have permission to perform this action'));
+      return;
+    }
+
+    next();
+  };
+
+export const requireAnyAuthenticatedRole = requireRole(...roleValues);

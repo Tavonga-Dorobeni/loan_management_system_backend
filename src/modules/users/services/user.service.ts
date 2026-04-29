@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt';
+import { Op } from 'sequelize';
 import type {
   ChangePasswordDto,
   CreateUserDto,
@@ -6,6 +7,7 @@ import type {
   UserResponseDto,
 } from '@/modules/users/dto';
 
+import { type ListEnvelope, buildListEnvelope, getOffset } from '@/common/utils/list';
 import { Roles } from '@/common/types/roles';
 import {
   ConflictError,
@@ -25,13 +27,48 @@ const toUserResponse = (user: UserModel): UserResponseDto => ({
   updatedAt: user.updatedAt.toISOString(),
 });
 
+export interface UserListQuery {
+  page: number;
+  pageSize: number;
+  sortBy?: string;
+  sortOrder: 'asc' | 'desc';
+  search?: string;
+  role?: string;
+  status?: string;
+}
+
 export class UserService {
-  async list(): Promise<UserResponseDto[]> {
-    const users = await UserModel.findAll({
-      order: [['createdAt', 'DESC']],
+  async list(query: UserListQuery): Promise<ListEnvelope<UserResponseDto>> {
+    const where: Record<PropertyKey, unknown> = {};
+
+    if (query.role) {
+      where.role = query.role;
+    }
+    if (query.status) {
+      where.status = query.status;
+    }
+    if (query.search) {
+      where[Op.or] = [
+        { firstName: { [Op.like]: `%${query.search}%` } },
+        { lastName: { [Op.like]: `%${query.search}%` } },
+        { email: { [Op.like]: `%${query.search}%` } },
+      ];
+    }
+
+    const sortField = query.sortBy ?? 'createdAt';
+    const { rows, count } = await UserModel.findAndCountAll({
+      where,
+      order: [[sortField, query.sortOrder.toUpperCase()]],
+      limit: query.pageSize,
+      offset: getOffset(query.page, query.pageSize),
     });
 
-    return users.map(toUserResponse);
+    return buildListEnvelope(
+      rows.map(toUserResponse),
+      query.page,
+      query.pageSize,
+      count
+    );
   }
 
   async getById(userId: number): Promise<UserResponseDto> {
@@ -105,24 +142,37 @@ export class UserService {
 
   async changePassword(
     userId: number,
-    payload: ChangePasswordDto
+    payload: ChangePasswordDto,
+    actor: { id: number; role: Roles }
   ): Promise<{ changed: boolean }> {
     const user = await UserModel.findByPk(userId);
     if (!user) {
       throw new NotFoundError('User not found');
     }
 
-    if (!user.passwordHash) {
+    const isSelf = actor.id === userId;
+    const isAdmin = actor.role === Roles.ADMIN;
+    if (!isSelf && !isAdmin) {
+      throw new UnauthorizedError('You cannot change another user password');
+    }
+
+    if (!isAdmin && !payload.currentPassword) {
+      throw new UnauthorizedError('Current password is required');
+    }
+
+    if (!isAdmin && !user.passwordHash) {
       throw new UnauthorizedError('Password is not set for this user');
     }
 
-    const isCurrentPasswordValid = await bcrypt.compare(
-      payload.currentPassword,
-      user.passwordHash
-    );
+    if (!isAdmin) {
+      const isCurrentPasswordValid = await bcrypt.compare(
+        payload.currentPassword,
+        user.passwordHash as string
+      );
 
-    if (!isCurrentPasswordValid) {
-      throw new UnauthorizedError('Current password is incorrect');
+      if (!isCurrentPasswordValid) {
+        throw new UnauthorizedError('Current password is incorrect');
+      }
     }
 
     const newPasswordHash = await bcrypt.hash(payload.newPassword, 12);

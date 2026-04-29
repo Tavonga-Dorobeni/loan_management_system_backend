@@ -5,8 +5,10 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 
 import { config } from '@/common/config';
+import type { KycDocumentTypes } from '@/common/types/kyc';
 
 export interface S3UploadUrlResult {
   key: string;
@@ -17,6 +19,11 @@ export interface S3UploadUrlResult {
 export interface S3UploadResult {
   key: string;
   objectUrl: string;
+}
+
+export interface SignedReadUrlResult {
+  signedUrl: string;
+  expiresAt: string;
 }
 
 export class S3Service {
@@ -46,10 +53,12 @@ export class S3Service {
 
   async generateUploadUrl(params: {
     borrowerId: number;
+    documentType: KycDocumentTypes;
     fileName: string;
     contentType: string;
   }): Promise<S3UploadUrlResult> {
-    const key = `kyc/${params.borrowerId}/${Date.now()}-${params.fileName}`;
+    const extension = path.extname(params.fileName) || '';
+    const key = `kyc/${params.borrowerId}/${params.documentType}/${randomUUID()}${extension}`;
 
     const command = new PutObjectCommand({
       Bucket: config.integrations.s3.bucket,
@@ -70,11 +79,13 @@ export class S3Service {
 
   async uploadKycDocument(params: {
     borrowerId: number;
+    documentType: KycDocumentTypes;
     fileName: string;
     contentType: string;
     body: Buffer;
   }): Promise<S3UploadResult> {
-    const key = `kyc/${params.borrowerId}/${Date.now()}-${randomUUID()}-${params.fileName}`;
+    const extension = path.extname(params.fileName) || '';
+    const key = `kyc/${params.borrowerId}/${params.documentType}/${randomUUID()}${extension}`;
 
     const command = new PutObjectCommand({
       Bucket: config.integrations.s3.bucket,
@@ -92,14 +103,26 @@ export class S3Service {
   }
 
   async getSignedReadUrl(key: string): Promise<string> {
+    const result = await this.getSignedReadUrlDetails(key);
+    return result.signedUrl;
+  }
+
+  async getSignedReadUrlDetails(key: string): Promise<SignedReadUrlResult> {
     const command = new GetObjectCommand({
       Bucket: config.integrations.s3.bucket,
       Key: key,
     });
 
-    return getSignedUrl(this.client, command, {
+    const signedUrl = await getSignedUrl(this.client, command, {
       expiresIn: config.integrations.s3.signedUrlTtl,
     });
+
+    return {
+      signedUrl,
+      expiresAt: new Date(
+        Date.now() + config.integrations.s3.signedUrlTtl * 1000
+      ).toISOString(),
+    };
   }
 
   parseKeyFromUrl(url: string): string {
