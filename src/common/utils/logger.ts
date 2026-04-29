@@ -1,8 +1,16 @@
 import pino from 'pino';
 
-import { config } from '@/common/config';
-
 export const logger = pino({
-  level: config.log.level,
-  base: undefined,
+  level: 'info',
+  transport: {
+    target: 'pino-pretty',
+    options: {
+      colorize: true,
+      levelFirst: true,
+      translateTime: 'HH:mm:ss Z',
+      ignore: 'pid,hostname',
+      messageFormat: '{msg}',
+    },
+  },
 });
+
