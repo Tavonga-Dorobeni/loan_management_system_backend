@@ -130,7 +130,7 @@ const verifyObservabilitySchema = async () => {
     "SHOW INDEX FROM loans WHERE Key_name IN ('idx_loans_borrower_id','idx_loans_status')"
   );
   const [repaymentIndexes] = await sequelize.query(
-    "SHOW INDEX FROM repayments WHERE Key_name IN ('idx_repayments_loan_id','idx_repayments_transaction_date')"
+    "SHOW INDEX FROM repayments WHERE Key_name IN ('idx_repayments_loan_id','idx_repayments_transaction_date','idx_repayments_period_year_month','idx_repayments_loan_period_year_month')"
   );
 
   assert.ok(activityTables.length > 0, 'activity_logs table is missing');
@@ -155,6 +155,18 @@ const verifyObservabilitySchema = async () => {
       (row) => row.Key_name === 'idx_repayments_transaction_date'
     ),
     'idx_repayments_transaction_date is missing'
+  );
+  assert.ok(
+    repaymentIndexes.some(
+      (row) => row.Key_name === 'idx_repayments_period_year_month'
+    ),
+    'idx_repayments_period_year_month is missing'
+  );
+  assert.ok(
+    repaymentIndexes.some(
+      (row) => row.Key_name === 'idx_repayments_loan_period_year_month'
+    ),
+    'idx_repayments_loan_period_year_month is missing'
   );
 };
 
@@ -295,6 +307,8 @@ const run = async () => {
       loanId,
       amount: 100,
       transactionDate: new Date().toISOString(),
+      periodYear: 2026,
+      periodMonth: 4,
     },
   });
   expectSuccessEnvelope(repaymentResult.payload, 'repayment create');
@@ -395,7 +409,7 @@ const run = async () => {
   );
 
   const repaymentImportResult = await requestJson(
-    `${API_PREFIX}/loans/import/repayments/excel`,
+    `${API_PREFIX}/loans/import/repayments/excel?periodYear=2026&periodMonth=5`,
     {
       method: 'POST',
       token,
@@ -446,6 +460,32 @@ const run = async () => {
   });
   expectSuccessEnvelope(reportResult.payload, 'loan portfolio report');
   assert.ok(Array.isArray(reportResult.payload.data.rows), 'report data.rows is not an array');
+
+  const annualScheduleResult = await requestJson(
+    `${API_PREFIX}/repayments/schedule?year=2026`,
+    {
+      token,
+      expectedStatus: 200,
+    }
+  );
+  expectSuccessEnvelope(annualScheduleResult.payload, 'repayment schedule');
+  assert.equal(annualScheduleResult.payload.data.year, 2026);
+  assert.equal(annualScheduleResult.payload.data.months.length, 12);
+
+  const loanScheduleResult = await requestJson(
+    `${API_PREFIX}/loans/${importedLoan.id}/schedule`,
+    {
+      token,
+      expectedStatus: 200,
+    }
+  );
+  expectSuccessEnvelope(loanScheduleResult.payload, 'loan schedule');
+  assert.ok(
+    loanScheduleResult.payload.data.some(
+      (slot) => slot.year === 2026 && slot.month === 5
+    ),
+    'Loan schedule did not include May 2026'
+  );
 
   const csvReportResponse = await request(`${API_PREFIX}/reports/loan-portfolio?format=csv`, {
     token,

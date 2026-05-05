@@ -30,3 +30,8 @@ export const loansQuerySchema = createListQuerySchema(
     endDateTo: Joi.date().iso().optional(),
   }
 );
+
+export const repaymentImportQuerySchema = Joi.object({
+  periodYear: Joi.number().integer().min(2000).max(2100).required(),
+  periodMonth: Joi.number().integer().min(1).max(12).required(),
+});

@@ -18,6 +18,7 @@ import { BorrowerModel } from '@/modules/borrowers/model';
 import { LoanModel } from '@/modules/loans/model';
 import { notificationService } from '@/modules/notifications/services/notification.service';
 import { RepaymentModel } from '@/modules/repayments/model';
+import { repaymentService } from '@/modules/repayments/services/repayment.service';
 
 const toNumber = (value: number | string | null): number | null => {
   if (value === null) {
@@ -60,12 +61,16 @@ const toBorrowerSummary = (
 });
 
 const toRepaymentResponse = (
-  repayment: RepaymentModel
+  repayment: RepaymentModel,
+  loanReference: string
 ): RepaymentResponseDto => ({
   id: repayment.id,
   loanId: repayment.loanId,
+  loanReference,
   amount: Number(repayment.amount),
   transactionDate: repayment.transactionDate.toISOString(),
+  periodYear: repayment.periodYear,
+  periodMonth: repayment.periodMonth,
   status: repayment.status,
   createdAt: repayment.createdAt.toISOString(),
   updatedAt: repayment.updatedAt.toISOString(),
@@ -126,6 +131,11 @@ interface ActorContext {
   role: Roles;
 }
 
+interface RepaymentImportPeriod {
+  periodYear: number;
+  periodMonth: number;
+}
+
 const cellAsString = (value: unknown): string => {
   if (value === null || value === undefined) {
     return '';
@@ -140,6 +150,10 @@ const cellAsNumber = (value: unknown): number => {
   }
 
   const normalized = cellAsString(value).replace(/,/g, '');
+  if (!normalized) {
+    throw new Error('Numeric value is required');
+  }
+
   const parsed = Number(normalized);
   if (Number.isNaN(parsed)) {
     throw new Error(`Invalid numeric value "${normalized}"`);
@@ -397,6 +411,8 @@ export class LoanService {
       status?: string;
       transactionDateFrom?: string;
       transactionDateTo?: string;
+      periodYear?: number;
+      periodMonth?: number;
     }
   ): Promise<ListEnvelope<RepaymentResponseDto>> {
     const loan = await LoanModel.findByPk(loanId);
@@ -409,6 +425,12 @@ export class LoanService {
     };
     if (query.status) {
       where.status = query.status;
+    }
+    if (query.periodYear !== undefined) {
+      where.periodYear = query.periodYear;
+    }
+    if (query.periodMonth !== undefined) {
+      where.periodMonth = query.periodMonth;
     }
     if (query.transactionDateFrom || query.transactionDateTo) {
       where.transactionDate = {
@@ -429,7 +451,7 @@ export class LoanService {
     });
 
     return buildListEnvelope(
-      rows.map(toRepaymentResponse),
+      rows.map((repayment) => toRepaymentResponse(repayment, loan.referenceNumber)),
       query.page,
       query.pageSize,
       count
@@ -775,6 +797,7 @@ export class LoanService {
 
   async importRepaymentsFromExcel(
     file: Express.Multer.File,
+    period: RepaymentImportPeriod,
     actor?: ActorContext
   ): Promise<LoanRepaymentImportSummary> {
     const workbook = XLSX.read(file.buffer, {
@@ -842,20 +865,15 @@ export class LoanService {
             throw new Error(`Loan with reference number "${referenceNumber}" was not found`);
           }
 
-          const expectedRepaymentAmount = Number(loan.repaymentAmount);
-          let repaymentStatus = 'CORRECT';
-          if (Math.abs(amount - expectedRepaymentAmount) > 0.000001) {
-            repaymentStatus = amount > expectedRepaymentAmount ? 'OVER' : 'UNDER';
-          }
-
-          const repayment = await RepaymentModel.create(
+          const repayment = await repaymentService.createInTransaction(
             {
               loanId: loan.id,
               amount,
               transactionDate,
-              status: repaymentStatus,
+              periodYear: period.periodYear,
+              periodMonth: period.periodMonth,
             },
-            { transaction }
+            transaction
           );
 
           await activityLogService.record({
@@ -867,13 +885,15 @@ export class LoanService {
             summary: `${actor?.id ? `User #${actor.id}` : 'System'} created repayment for loan ${loan.referenceNumber} via import`,
             metadata: {
               amount,
-              status: repaymentStatus,
+              status: repayment.status,
+              periodYear: repayment.periodYear,
+              periodMonth: repayment.periodMonth,
               rowNumber,
             },
             sourceType: 'import',
             sourceReference: file.originalname,
           });
-          if (repaymentStatus === 'UNDER') {
+          if (repayment.status === 'UNDER') {
             await notificationService.publish({
               eventType: 'repayment.created.under',
               actorUserId: actor?.id,
@@ -882,20 +902,11 @@ export class LoanService {
                 repaymentId: repayment.id,
                 loanId: loan.id,
                 amount,
+                periodYear: repayment.periodYear,
+                periodMonth: repayment.periodMonth,
               },
             });
           }
-
-          const updatedAmountDue = Number((Number(loan.amountDue ?? 0) - amount).toFixed(2));
-          const updatedAmountPaid = Number((Number(loan.amountPaid ?? 0) + amount).toFixed(2));
-
-          await loan.update(
-            {
-              amountDue: updatedAmountDue,
-              amountPaid: updatedAmountPaid,
-            },
-            { transaction }
-          );
         });
 
         summary.createdRepayments += 1;

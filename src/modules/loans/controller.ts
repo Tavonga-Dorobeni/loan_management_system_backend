@@ -6,6 +6,7 @@ import { sendSuccess } from '@/common/utils/response';
 import { activityLogService } from '@/modules/activity_logs/services/activity-log.service';
 import { loanService } from '@/modules/loans/services/loan.service';
 import { notificationService } from '@/modules/notifications/services/notification.service';
+import { repaymentScheduleService } from '@/modules/repayments/services/schedule.service';
 
 export class LoanController {
   async list(req: Request, res: Response): Promise<Response> {
@@ -140,9 +141,29 @@ export class LoanController {
         typeof req.query.transactionDateTo === 'string'
           ? req.query.transactionDateTo
           : undefined,
+      periodYear:
+        typeof req.query.periodYear === 'number'
+          ? req.query.periodYear
+          : req.query.periodYear
+            ? Number(req.query.periodYear)
+            : undefined,
+      periodMonth:
+        typeof req.query.periodMonth === 'number'
+          ? req.query.periodMonth
+          : req.query.periodMonth
+            ? Number(req.query.periodMonth)
+            : undefined,
     });
 
     return sendSuccess(res, repayments, 'Loan repayments retrieved successfully');
+  }
+
+  async getSchedule(req: Request, res: Response): Promise<Response> {
+    const schedule = await repaymentScheduleService.getLoanSchedule(
+      Number(req.params.loan_id)
+    );
+
+    return sendSuccess(res, schedule, 'Loan repayment schedule retrieved successfully');
   }
 
   async importExcel(req: Request, res: Response): Promise<Response> {
@@ -216,7 +237,17 @@ export class LoanController {
       throw new ValidationError('Excel file is required');
     }
 
-    const result = await loanService.importRepaymentsFromExcel(req.file, req.user);
+    const periodYear = Number(req.query.periodYear);
+    const periodMonth = Number(req.query.periodMonth);
+
+    const result = await loanService.importRepaymentsFromExcel(
+      req.file,
+      {
+        periodYear,
+        periodMonth,
+      },
+      req.user
+    );
     await activityLogService.record({
       actorUserId: req.user?.id,
       actorRole: req.user?.role,
@@ -228,6 +259,8 @@ export class LoanController {
         ...result,
         successCount: result.processedRows,
         failureCount: result.failedRows.length,
+        periodYear,
+        periodMonth,
       },
       sourceType: 'import',
       sourceReference: req.file.originalname,
@@ -239,6 +272,8 @@ export class LoanController {
         ...result,
         successCount: result.processedRows,
         failureCount: result.failedRows.length,
+        periodYear,
+        periodMonth,
       },
     });
     return sendSuccess(res, result, 'Loan repayment excel import completed');

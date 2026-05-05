@@ -13,6 +13,7 @@ import {
   createLoanSchema,
   loanIdParamSchema,
   loansQuerySchema,
+  repaymentImportQuerySchema,
   updateLoanSchema,
 } from '@/modules/loans/validators';
 import { repaymentsQuerySchema } from '@/modules/repayments/validators';
@@ -215,9 +216,20 @@ const upload = multer({
  * /api/v1/loans/import/repayments/excel:
  *   post:
  *     tags: [Loans]
- *     summary: Import loan repayments from Excel using C as reference number, F as transaction date, and G as amount.
+ *     summary: Import loan repayments from Excel using C as reference number, F as transaction date, and G as amount. The period is supplied via query parameters.
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: periodYear
+ *         required: true
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: periodMonth
+ *         required: true
+ *         schema:
+ *           type: integer
  *     requestBody:
  *       required: true
  *       content:
@@ -232,6 +244,21 @@ const upload = multer({
  *     responses:
  *       200:
  *         description: Loan repayment import completed
+ * /api/v1/loans/{loan_id}/schedule:
+ *   get:
+ *     tags: [Loans]
+ *     summary: Get the monthly schedule coverage for a loan
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: loan_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Loan repayment schedule retrieved successfully
  */
 router.get(
   '/',
@@ -258,6 +285,7 @@ router.post(
   '/import/repayments/excel',
   authMiddleware,
   requireRole(Roles.ADMIN, Roles.COLLECTIONS_OFFICER),
+  validate({ query: repaymentImportQuerySchema }),
   upload.single('file'),
   asyncHandler(loanController.importRepaymentsExcel.bind(loanController))
 );
@@ -274,6 +302,13 @@ router.get(
   requireAnyAuthenticatedRole,
   validate({ params: loanIdParamSchema }),
   asyncHandler(loanController.getDetails.bind(loanController))
+);
+router.get(
+  '/:loan_id/schedule',
+  authMiddleware,
+  requireAnyAuthenticatedRole,
+  validate({ params: loanIdParamSchema }),
+  asyncHandler(loanController.getSchedule.bind(loanController))
 );
 router.get(
   '/:loan_id/repayments',

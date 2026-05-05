@@ -6,6 +6,7 @@ import { activityLogService } from '@/modules/activity_logs/services/activity-lo
 import { LoanModel } from '@/modules/loans/model';
 import { notificationService } from '@/modules/notifications/services/notification.service';
 import { repaymentService } from '@/modules/repayments/services/repayment.service';
+import { repaymentScheduleService } from '@/modules/repayments/services/schedule.service';
 
 export class RepaymentController {
   async list(req: Request, res: Response): Promise<Response> {
@@ -26,8 +27,27 @@ export class RepaymentController {
         typeof req.query.transactionDateTo === 'string'
           ? req.query.transactionDateTo
           : undefined,
+      periodYear:
+        typeof req.query.periodYear === 'number'
+          ? req.query.periodYear
+          : req.query.periodYear
+            ? Number(req.query.periodYear)
+            : undefined,
+      periodMonth:
+        typeof req.query.periodMonth === 'number'
+          ? req.query.periodMonth
+          : req.query.periodMonth
+            ? Number(req.query.periodMonth)
+            : undefined,
     });
     return sendSuccess(res, repayments, 'Repayments retrieved successfully');
+  }
+
+  async schedule(req: Request, res: Response): Promise<Response> {
+    const schedule = await repaymentScheduleService.getAnnualSchedule(
+      Number(req.query.year)
+    );
+    return sendSuccess(res, schedule, 'Repayment schedule retrieved successfully');
   }
 
   async getById(req: Request, res: Response): Promise<Response> {
@@ -50,6 +70,8 @@ export class RepaymentController {
         loanId: repayment.loanId,
         amount: repayment.amount,
         status: repayment.status,
+        periodYear: repayment.periodYear,
+        periodMonth: repayment.periodMonth,
       },
       sourceType: 'api',
     });
@@ -63,6 +85,8 @@ export class RepaymentController {
           repaymentId: repayment.id,
           loanId: repayment.loanId,
           amount: repayment.amount,
+          periodYear: repayment.periodYear,
+          periodMonth: repayment.periodMonth,
         },
       });
     }
@@ -103,6 +127,8 @@ export class RepaymentController {
           repaymentId: repayment.id,
           loanId: repayment.loanId,
           amount: repayment.amount,
+          periodYear: repayment.periodYear,
+          periodMonth: repayment.periodMonth,
         },
       });
     }

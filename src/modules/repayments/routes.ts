@@ -11,6 +11,7 @@ import { repaymentController } from '@/modules/repayments/controller';
 import {
   createRepaymentSchema,
   repaymentIdParamSchema,
+  repaymentScheduleQuerySchema,
   repaymentsQuerySchema,
   updateRepaymentSchema,
 } from '@/modules/repayments/validators';
@@ -25,9 +26,56 @@ const router = Router();
  *     summary: List repayments
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: periodYear
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: periodMonth
+ *         schema:
+ *           type: integer
  *     responses:
  *       200:
  *         description: Repayments retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     items:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           loanId:
+ *                             type: integer
+ *                           loanReference:
+ *                             type: string
+ *                           amount:
+ *                             type: number
+ *                           transactionDate:
+ *                             type: string
+ *                             format: date-time
+ *                           periodYear:
+ *                             type: integer
+ *                           periodMonth:
+ *                             type: integer
+ *                           status:
+ *                             type: string
+ *                           createdAt:
+ *                             type: string
+ *                             format: date-time
+ *                           updatedAt:
+ *                             type: string
+ *                             format: date-time
  *   post:
  *     tags: [Repayments]
  *     summary: Create a repayment
@@ -39,7 +87,7 @@ const router = Router();
  *         application/json:
  *           schema:
  *             type: object
- *             required: [loanId, amount, transactionDate]
+ *             required: [loanId, amount, transactionDate, periodYear, periodMonth]
  *             properties:
  *               loanId:
  *                 type: integer
@@ -48,9 +96,28 @@ const router = Router();
  *               transactionDate:
  *                 type: string
  *                 format: date-time
+ *               periodYear:
+ *                 type: integer
+ *               periodMonth:
+ *                 type: integer
  *     responses:
  *       201:
  *         description: Repayment created successfully
+ * /api/v1/repayments/schedule:
+ *   get:
+ *     tags: [Repayments]
+ *     summary: Get the portfolio repayment schedule for a year
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: year
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Repayment schedule retrieved successfully
  * /api/v1/repayments/{repayment_id}:
  *   get:
  *     tags: [Repayments]
@@ -66,6 +133,39 @@ const router = Router();
  *     responses:
  *       200:
  *         description: Repayment retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     loanId:
+ *                       type: integer
+ *                     loanReference:
+ *                       type: string
+ *                     amount:
+ *                       type: number
+ *                     transactionDate:
+ *                       type: string
+ *                       format: date-time
+ *                     periodYear:
+ *                       type: integer
+ *                     periodMonth:
+ *                       type: integer
+ *                     status:
+ *                       type: string
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
  *   put:
  *     tags: [Repayments]
  *     summary: Update repayment
@@ -91,6 +191,10 @@ const router = Router();
  *               transactionDate:
  *                 type: string
  *                 format: date-time
+ *               periodYear:
+ *                 type: integer
+ *               periodMonth:
+ *                 type: integer
  *     responses:
  *       200:
  *         description: Repayment updated successfully
@@ -115,6 +219,13 @@ router.get(
   requireAnyAuthenticatedRole,
   validate({ query: repaymentsQuerySchema }),
   asyncHandler(repaymentController.list.bind(repaymentController))
+);
+router.get(
+  '/schedule',
+  authMiddleware,
+  requireAnyAuthenticatedRole,
+  validate({ query: repaymentScheduleQuerySchema }),
+  asyncHandler(repaymentController.schedule.bind(repaymentController))
 );
 router.post(
   '/',

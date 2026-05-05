@@ -6,6 +6,7 @@ declare module 'xlsx' {
   };
 
   export const utils: {
+    aoa_to_sheet(rows: unknown[][]): unknown;
     sheet_to_json<T = unknown>(
       sheet: unknown,
       options?: Record<string, unknown>
