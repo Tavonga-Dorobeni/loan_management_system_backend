@@ -100,7 +100,7 @@ export class RepaymentScheduleService {
           COUNT(loans.id) AS activeLoanCount
         FROM (${MONTH_SERIES_SQL}) months
         LEFT JOIN loans
-          ON loans.status = 'SUCCESS'
+          ON UPPER(loans.status) IN ('ACTIVE', 'SUCCESS')
          AND (
            YEAR(loans.start_date) < :year
            OR (YEAR(loans.start_date) = :year AND MONTH(loans.start_date) <= months.month)

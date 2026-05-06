@@ -2,8 +2,10 @@ import XLSX from 'xlsx';
 
 import { sequelize } from '@/common/config/database.config';
 import { Roles } from '@/common/types/roles';
+import { activityLogService } from '@/modules/activity_logs/services/activity-log.service';
 import { LoanModel } from '@/modules/loans/model';
 import { loanService } from '@/modules/loans/services/loan.service';
+import { notificationService } from '@/modules/notifications/services/notification.service';
 import { repaymentService } from '@/modules/repayments/services/repayment.service';
 
 const mockTransaction = (transactionToken: never): void => {
@@ -83,5 +85,185 @@ describe('LoanService repayment import', () => {
         },
       ],
     });
+  });
+
+  it('maps approval import statuses to ACTIVE and REJECTED', async () => {
+    const loan = {
+      id: 12,
+      referenceNumber: 'LN-APP-001',
+      status: 'PENDING',
+      repaymentAmount: 100,
+      startDate: new Date('2026-01-01T00:00:00.000Z'),
+      endDate: new Date('2026-03-01T00:00:00.000Z'),
+      amountPaid: null,
+      amountDue: null,
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+    const successFile = {
+      buffer: createWorkbookBuffer([
+        ['A', 'B', 'Reference', 'D', 'E', 'F', 'Status', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'Message'],
+        ['', '', 'LN-APP-001', '', '', '', 'SUCCESS', '', '', '', '', '', '', '', 'approved'],
+      ]),
+      originalname: 'approvals-success.xlsx',
+    } as Express.Multer.File;
+    const rejectedFile = {
+      buffer: createWorkbookBuffer([
+        ['A', 'B', 'Reference', 'D', 'E', 'F', 'Status', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'Message'],
+        ['', '', 'LN-APP-001', '', '', '', 'DECLINED', '', '', '', '', '', '', '', 'declined'],
+      ]),
+      originalname: 'approvals-rejected.xlsx',
+    } as Express.Multer.File;
+
+    jest.spyOn(LoanModel, 'findOne').mockResolvedValue(loan as never);
+    jest.spyOn(activityLogService, 'record').mockResolvedValue();
+    jest.spyOn(notificationService, 'publish').mockResolvedValue();
+
+    const successResult = await loanService.importApprovalsFromExcel(successFile, {
+      id: 5,
+      role: Roles.CREDIT_ANALYST,
+    });
+
+    expect(loan.update).toHaveBeenCalledWith({
+      status: 'ACTIVE',
+      message: 'approved',
+      amountPaid: 0,
+      amountDue: 200,
+    });
+    expect(successResult).toEqual({
+      totalRows: 1,
+      processedRows: 1,
+      successCount: 1,
+      failureCount: 0,
+      updatedLoans: 1,
+      failedRows: [],
+    });
+    expect(activityLogService.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          from: 'PENDING',
+          to: 'ACTIVE',
+        }),
+      })
+    );
+    expect(notificationService.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          from: 'PENDING',
+          to: 'ACTIVE',
+        }),
+      })
+    );
+
+    jest.clearAllMocks();
+    loan.status = 'ACTIVE';
+
+    await loanService.importApprovalsFromExcel(rejectedFile, {
+      id: 5,
+      role: Roles.CREDIT_ANALYST,
+    });
+
+    expect(loan.update).toHaveBeenCalledWith({
+      status: 'REJECTED',
+      message: 'declined',
+      amountPaid: null,
+      amountDue: null,
+    });
+    expect(activityLogService.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          from: 'ACTIVE',
+          to: 'REJECTED',
+        }),
+      })
+    );
+    expect(notificationService.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          from: 'ACTIVE',
+          to: 'REJECTED',
+        }),
+      })
+    );
+  });
+});
+
+describe('LoanService update', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('normalizes a write-off status update and preserves the reason message', async () => {
+    const loan = {
+      id: 21,
+      borrowerId: 8,
+      referenceNumber: 'LN-WO-001',
+      type: 'SALARY_ADVANCE',
+      status: 'ACTIVE',
+      startDate: new Date('2026-01-01T00:00:00.000Z'),
+      endDate: new Date('2026-12-31T00:00:00.000Z'),
+      disbursementDate: new Date('2026-01-05T00:00:00.000Z'),
+      repaymentAmount: 100,
+      totalAmount: 1200,
+      amountPaid: 300,
+      amountDue: 900,
+      message: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-05-06T00:00:00.000Z'),
+      update: jest.fn().mockImplementation(async (values: Record<string, unknown>) => {
+        Object.assign(loan, values);
+      }),
+    };
+
+    jest.spyOn(LoanModel, 'findByPk').mockResolvedValue(loan as never);
+
+    const result = await loanService.update(21, {
+      status: 'write off',
+      message: 'Board-approved write-off after settlement review',
+    });
+
+    expect(loan.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'WRITE-OFF',
+        message: 'Board-approved write-off after settlement review',
+      })
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        id: 21,
+        status: 'WRITE-OFF',
+        message: 'Board-approved write-off after settlement review',
+      })
+    );
+  });
+
+  it('rejects a write-off status update when the reason message is blank', async () => {
+    const loan = {
+      id: 22,
+      borrowerId: 8,
+      referenceNumber: 'LN-WO-002',
+      type: 'SALARY_ADVANCE',
+      status: 'ACTIVE',
+      startDate: new Date('2026-01-01T00:00:00.000Z'),
+      endDate: new Date('2026-12-31T00:00:00.000Z'),
+      disbursementDate: new Date('2026-01-05T00:00:00.000Z'),
+      repaymentAmount: 100,
+      totalAmount: 1200,
+      amountPaid: 300,
+      amountDue: 900,
+      message: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-05-06T00:00:00.000Z'),
+      update: jest.fn(),
+    };
+
+    jest.spyOn(LoanModel, 'findByPk').mockResolvedValue(loan as never);
+
+    await expect(
+      loanService.update(22, {
+        status: 'WRITE-OFF',
+        message: '   ',
+      })
+    ).rejects.toThrow('message is required when status is WRITE-OFF');
+    expect(loan.update).not.toHaveBeenCalled();
   });
 });

@@ -25,6 +25,10 @@ import {
 
 const PERIOD_ALREADY_COVERED_MESSAGE =
   'This period is already fully covered for this loan';
+const ACTIVE_LOAN_STATUS = 'ACTIVE';
+const LEGACY_SUCCESS_LOAN_STATUS = 'SUCCESS';
+const MATURED_LOAN_STATUS = 'MATURED';
+const APPROVED_LOAN_STATUSES = new Set(['ACTIVE', 'SUCCESS']);
 
 type RepaymentInputDate = string | Date;
 
@@ -122,6 +126,39 @@ const calculateLoanBalances = (
   amountPaid: toRoundedNumber(Number(amountPaid ?? 0) + deltaAmount),
   amountDue: toRoundedNumber(Number(amountDue ?? 0) - deltaAmount),
 });
+
+const buildLoanBalanceUpdate = (
+  loan: LoanModel,
+  deltaAmount: number
+): { amountPaid: number; amountDue: number; status?: string } => {
+  const balances = calculateLoanBalances(loan.amountPaid, loan.amountDue, deltaAmount);
+  const normalizedStatus = loan.status.toUpperCase();
+
+  if (
+    balances.amountDue <= 0 &&
+    (normalizedStatus === ACTIVE_LOAN_STATUS ||
+      normalizedStatus === LEGACY_SUCCESS_LOAN_STATUS ||
+      normalizedStatus === MATURED_LOAN_STATUS)
+  ) {
+    return {
+      ...balances,
+      status: MATURED_LOAN_STATUS,
+    };
+  }
+
+  if (
+    balances.amountDue > 0 &&
+    (normalizedStatus === MATURED_LOAN_STATUS ||
+      normalizedStatus === LEGACY_SUCCESS_LOAN_STATUS)
+  ) {
+    return {
+      ...balances,
+      status: ACTIVE_LOAN_STATUS,
+    };
+  }
+
+  return balances;
+};
 
 export interface RepaymentListQuery {
   page: number;
@@ -244,10 +281,7 @@ export class RepaymentService {
       { transaction }
     );
 
-    await loan.update(
-      calculateLoanBalances(loan.amountPaid, loan.amountDue, payload.amount),
-      { transaction }
-    );
+    await loan.update(buildLoanBalanceUpdate(loan, payload.amount), { transaction });
 
     return toRepaymentResponse(repayment, loan.referenceNumber);
   }
@@ -294,27 +328,16 @@ export class RepaymentService {
 
       if (nextLoanId === repayment.loanId) {
         await originalLoan.update(
-          calculateLoanBalances(
-            originalLoan.amountPaid,
-            originalLoan.amountDue,
-            nextAmount - originalAmount
-          ),
+          buildLoanBalanceUpdate(originalLoan, nextAmount - originalAmount),
           { transaction }
         );
       } else {
         await originalLoan.update(
-          calculateLoanBalances(
-            originalLoan.amountPaid,
-            originalLoan.amountDue,
-            -originalAmount
-          ),
+          buildLoanBalanceUpdate(originalLoan, -originalAmount),
           { transaction }
         );
 
-        await nextLoan.update(
-          calculateLoanBalances(nextLoan.amountPaid, nextLoan.amountDue, nextAmount),
-          { transaction }
-        );
+        await nextLoan.update(buildLoanBalanceUpdate(nextLoan, nextAmount), { transaction });
       }
 
       await repayment.update(
@@ -345,10 +368,9 @@ export class RepaymentService {
         throw new NotFoundError('Loan not found');
       }
 
-      await loan.update(
-        calculateLoanBalances(loan.amountPaid, loan.amountDue, -Number(repayment.amount)),
-        { transaction }
-      );
+      await loan.update(buildLoanBalanceUpdate(loan, -Number(repayment.amount)), {
+        transaction,
+      });
 
       await repayment.destroy({ transaction });
 
@@ -370,9 +392,14 @@ export class RepaymentService {
       payload.periodMonth
     );
 
-    if (loan.status !== 'SUCCESS') {
+    const normalizedLoanStatus = loan.status.toUpperCase();
+    const canMutateRepayment =
+      APPROVED_LOAN_STATUSES.has(normalizedLoanStatus) ||
+      (excludeRepaymentId !== undefined && normalizedLoanStatus === MATURED_LOAN_STATUS);
+
+    if (!canMutateRepayment) {
       throw new ValidationError(
-        'Repayments can only be recorded for loans with SUCCESS status'
+        'Repayments can only be recorded for loans with ACTIVE status'
       );
     }
 

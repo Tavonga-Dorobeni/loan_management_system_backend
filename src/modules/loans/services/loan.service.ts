@@ -10,12 +10,24 @@ import { Op } from 'sequelize';
 import XLSX from 'xlsx';
 
 import { sequelize } from '@/common/config/database.config';
-import { ConflictError, ForbiddenError, NotFoundError } from '@/common/utils/errors';
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from '@/common/utils/errors';
 import { buildListEnvelope, getOffset, type ListEnvelope } from '@/common/utils/list';
 import type { Roles } from '@/common/types/roles';
 import { activityLogService } from '@/modules/activity_logs/services/activity-log.service';
 import { BorrowerModel } from '@/modules/borrowers/model';
 import { LoanModel } from '@/modules/loans/model';
+import {
+  ACTIVE_LOAN_STATUS,
+  LEGACY_SUCCESS_LOAN_STATUS,
+  REJECTED_LOAN_STATUS,
+  WRITE_OFF_LOAN_STATUS,
+  normalizeLoanStatus,
+} from '@/modules/loans/statuses';
 import { notificationService } from '@/modules/notifications/services/notification.service';
 import { RepaymentModel } from '@/modules/repayments/model';
 import { repaymentService } from '@/modules/repayments/services/repayment.service';
@@ -136,6 +148,11 @@ interface RepaymentImportPeriod {
   periodMonth: number;
 }
 
+const LEGACY_APPROVED_LOAN_STATUSES = new Set([
+  ACTIVE_LOAN_STATUS,
+  LEGACY_SUCCESS_LOAN_STATUS,
+]);
+
 const cellAsString = (value: unknown): string => {
   if (value === null || value === undefined) {
     return '';
@@ -182,6 +199,18 @@ const cellAsDate = (value: unknown): Date => {
   }
 
   return parsed;
+};
+
+const ensureWriteOffReason = (
+  status: string,
+  message: string | null | undefined
+): void => {
+  if (
+    status === WRITE_OFF_LOAN_STATUS &&
+    (!message || !message.trim())
+  ) {
+    throw new ValidationError('message is required when status is WRITE-OFF');
+  }
 };
 
 const monthsBetweenDates = (startDate: Date, endDate: Date): number => {
@@ -276,11 +305,14 @@ export class LoanService {
       throw new ConflictError('A loan with this reference number already exists');
     }
 
+    const normalizedStatus = normalizeLoanStatus(payload.status);
+    ensureWriteOffReason(normalizedStatus, payload.message);
+
     const loan = await LoanModel.create({
       borrowerId: payload.borrowerId,
       referenceNumber: payload.referenceNumber,
       type: payload.type,
-      status: payload.status,
+      status: normalizedStatus,
       startDate: new Date(payload.startDate),
       endDate: new Date(payload.endDate),
       disbursementDate: payload.disbursementDate
@@ -347,11 +379,16 @@ export class LoanService {
       }
     }
 
+    const nextStatus =
+      payload.status !== undefined ? normalizeLoanStatus(payload.status) : loan.status;
+    const nextMessage = payload.message !== undefined ? payload.message : loan.message;
+    ensureWriteOffReason(nextStatus, nextMessage);
+
     await loan.update({
       borrowerId: payload.borrowerId ?? loan.borrowerId,
       referenceNumber: payload.referenceNumber ?? loan.referenceNumber,
       type: payload.type ?? loan.type,
-      status: payload.status ?? loan.status,
+      status: nextStatus,
       startDate: payload.startDate ? new Date(payload.startDate) : loan.startDate,
       endDate: payload.endDate ? new Date(payload.endDate) : loan.endDate,
       disbursementDate:
@@ -364,7 +401,7 @@ export class LoanService {
       totalAmount: payload.totalAmount ?? loan.totalAmount,
       amountPaid: payload.amountPaid !== undefined ? payload.amountPaid : loan.amountPaid,
       amountDue: payload.amountDue !== undefined ? payload.amountDue : loan.amountDue,
-      message: payload.message !== undefined ? payload.message : loan.message,
+      message: nextMessage,
     });
 
     return toLoanResponse(loan);
@@ -734,30 +771,32 @@ export class LoanService {
           throw new Error(`Loan with reference number "${referenceNumber}" was not found`);
         }
 
-        const isSuccess = status.toUpperCase() === 'SUCCESS';
-        const computedAmountDue = isSuccess
+        const normalizedStatus =
+          status.toUpperCase() === 'SUCCESS' ? ACTIVE_LOAN_STATUS : REJECTED_LOAN_STATUS;
+        const isApproved = LEGACY_APPROVED_LOAN_STATUSES.has(normalizedStatus);
+        const computedAmountDue = isApproved
           ? Number((Number(loan.repaymentAmount) * monthsBetweenDates(loan.startDate, loan.endDate)).toFixed(2))
-          : loan.amountDue;
+          : null;
 
         const previousStatus = loan.status;
         await loan.update({
-          status,
+          status: normalizedStatus,
           message: messageValue || null,
-          amountPaid: isSuccess ? 0 : loan.amountPaid,
+          amountPaid: isApproved ? 0 : loan.amountPaid,
           amountDue: computedAmountDue,
         });
 
-        if (previousStatus !== status) {
+        if (previousStatus !== normalizedStatus) {
           await activityLogService.record({
             actorUserId: actor?.id,
             actorRole: actor?.role,
             entityType: 'loan',
             entityId: loan.id,
             action: 'loan.status.changed',
-            summary: `${actor?.id ? `User #${actor.id}` : 'System'} changed status of loan ${loan.referenceNumber} from ${previousStatus} to ${status} via import`,
+            summary: `${actor?.id ? `User #${actor.id}` : 'System'} changed status of loan ${loan.referenceNumber} from ${previousStatus} to ${normalizedStatus} via import`,
             metadata: {
               from: previousStatus,
-              to: status,
+              to: normalizedStatus,
               rowNumber,
             },
             sourceType: 'import',
@@ -770,7 +809,7 @@ export class LoanService {
             metadata: {
               loanId: loan.id,
               from: previousStatus,
-              to: status,
+              to: normalizedStatus,
             },
           });
         }

@@ -66,6 +66,7 @@ const upload = multer({
  *                 type: string
  *               status:
  *                 type: string
+ *                 description: Canonical loan lifecycle status. Use `WRITE-OFF` to mark a loan inactive without deleting it.
  *               startDate:
  *                 type: string
  *                 format: date-time
@@ -89,6 +90,7 @@ const upload = multer({
  *               message:
  *                 type: string
  *                 nullable: true
+ *                 description: Free-form operator note. When `status` is `WRITE-OFF`, store the write-off reason here.
  *     responses:
  *       201:
  *         description: Loan created successfully
@@ -133,6 +135,7 @@ const upload = multer({
  *                 type: string
  *               status:
  *                 type: string
+ *                 description: Canonical loan lifecycle status. Use `WRITE-OFF` to mark a loan inactive without deleting it.
  *               startDate:
  *                 type: string
  *                 format: date-time
@@ -156,6 +159,7 @@ const upload = multer({
  *               message:
  *                 type: string
  *                 nullable: true
+ *                 description: Free-form operator note. When `status` is `WRITE-OFF`, store the write-off reason here.
  *     responses:
  *       200:
  *         description: Loan updated successfully

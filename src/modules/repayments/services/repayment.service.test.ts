@@ -17,7 +17,7 @@ const mockTransaction = (transactionToken: never): void => {
 const createLoanStub = (overrides: Partial<Record<string, unknown>> = {}) => ({
   id: 3,
   referenceNumber: 'LN-003',
-  status: 'SUCCESS',
+  status: 'ACTIVE',
   startDate: new Date('2026-01-01T00:00:00.000Z'),
   endDate: new Date('2026-06-01T00:00:00.000Z'),
   repaymentAmount: 100,
@@ -119,6 +119,47 @@ describe('RepaymentService', () => {
       {
         amountPaid: 100,
         amountDue: 200,
+      },
+      { transaction: transactionToken }
+    );
+  });
+
+  it('marks a loan as MATURED when a repayment clears the outstanding balance', async () => {
+    const transactionToken = {} as never;
+    const loan = createLoanStub({
+      amountPaid: 200,
+      amountDue: 60,
+    });
+    const createdRepayment = {
+      id: 14,
+      loanId: 3,
+      amount: 60,
+      transactionDate: new Date('2026-04-18T00:00:00.000Z'),
+      periodYear: 2026,
+      periodMonth: 4,
+      status: 'UNDER',
+      createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-19T00:00:00.000Z'),
+    };
+
+    mockTransaction(transactionToken);
+    jest.spyOn(LoanModel, 'findByPk').mockResolvedValue(loan as never);
+    jest.spyOn(RepaymentModel, 'sum').mockResolvedValue(40 as never);
+    jest.spyOn(RepaymentModel, 'create').mockResolvedValue(createdRepayment as never);
+
+    await repaymentService.create({
+      loanId: 3,
+      amount: 60,
+      transactionDate: '2026-04-18T00:00:00.000Z',
+      periodYear: 2026,
+      periodMonth: 4,
+    });
+
+    expect(loan.update).toHaveBeenCalledWith(
+      {
+        amountPaid: 260,
+        amountDue: 0,
+        status: 'MATURED',
       },
       { transaction: transactionToken }
     );
@@ -344,6 +385,49 @@ describe('RepaymentService', () => {
       status: 'UNDER',
       loanReference: 'LN-003',
     });
+  });
+
+  it('allows repayment updates on matured loans and reactivates them if the balance becomes positive again', async () => {
+    const transactionToken = {} as never;
+    const loan = createLoanStub({
+      status: 'MATURED',
+      amountPaid: 300,
+      amountDue: 0,
+    });
+    const repayment = {
+      id: 15,
+      loanId: 3,
+      amount: 100,
+      transactionDate: new Date('2026-04-18T00:00:00.000Z'),
+      periodYear: 2026,
+      periodMonth: 4,
+      status: 'CORRECT',
+      createdAt: new Date('2026-04-19T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-19T00:00:00.000Z'),
+      update: jest.fn().mockImplementation(async (values: Record<string, unknown>) => {
+        Object.assign(repayment, values);
+      }),
+    };
+
+    mockTransaction(transactionToken);
+    jest.spyOn(RepaymentModel, 'findByPk').mockResolvedValue(repayment as never);
+    jest.spyOn(LoanModel, 'findByPk').mockResolvedValue(loan as never);
+    jest.spyOn(RepaymentModel, 'sum').mockResolvedValue(0 as never);
+
+    await repaymentService.update(15, {
+      amount: 80,
+      periodYear: 2026,
+      periodMonth: 4,
+    });
+
+    expect(loan.update).toHaveBeenCalledWith(
+      {
+        amountPaid: 280,
+        amountDue: 20,
+        status: 'ACTIVE',
+      },
+      { transaction: transactionToken }
+    );
   });
 
   it('reverses the loan balance when a repayment is deleted', async () => {

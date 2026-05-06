@@ -13,6 +13,7 @@ const buildReportQuery = (req: Request): ReportQuery => ({
       : 'json',
   from: typeof req.query.from === 'string' ? req.query.from : undefined,
   to: typeof req.query.to === 'string' ? req.query.to : undefined,
+  month: typeof req.query.month === 'string' ? req.query.month : undefined,
   borrowerId:
     typeof req.query.borrowerId === 'string' ? Number(req.query.borrowerId) : undefined,
   loanId: typeof req.query.loanId === 'string' ? Number(req.query.loanId) : undefined,
