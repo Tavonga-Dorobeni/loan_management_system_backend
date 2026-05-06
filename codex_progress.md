@@ -183,6 +183,7 @@ Current frontend status:
 - 2026-05-06: SPEC §13 dashboard deviation recorded. The dashboard payload remains consolidated in `GET /api/v1/dashboard/portfolio-summary`, and the endpoint now carries the expanded KPI, loan-book, portfolio-quality, chart, and top-installment data in one response rather than splitting the dashboard into multiple round trips.
 - 2026-05-06: Dashboard status semantics updated. `totalActiveLoans` and the other active-loan portfolio metrics are now derived from `loans.status = 'ACTIVE'` instead of `amountDue > 0`, matured totals derive from `loans.status = 'MATURED'`, and `monthlyCollectionsExpected` is now a single-month KPI driven by an optional `month=YYYY-MM` query parameter. This is a brownfield, backwards-incompatible behavioral change for any consumer that treated `amountDue > 0` as the active-loan definition.
 - 2026-05-06: Manual loan write-off support accepted as a brownfield extension. `PUT /api/v1/loans/:loan_id` now intentionally supports `status = 'WRITE-OFF'`, requires the write-off reason in `message`, and written-off loans are no longer treated as active by the dashboard because active-loan metrics are status-based.
+- 2026-05-06: Dedicated lifecycle endpoints added for `POST /api/v1/loans/:loan_id/write-off` and `POST /api/v1/loans/:loan_id/early-maturity`. These emit the new Activity Log events `loan.write_off` and `loan.early_maturity`, and early maturity recalculates `repaymentAmount` from the server-side `amountDue`.
 
 ## Immediate Next Steps
 

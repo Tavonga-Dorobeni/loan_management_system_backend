@@ -11,10 +11,12 @@ import { asyncHandler, validate } from '@/common/utils/validation';
 import { loanController } from '@/modules/loans/controller';
 import {
   createLoanSchema,
+  earlyMaturityLoanSchema,
   loanIdParamSchema,
   loansQuerySchema,
   repaymentImportQuerySchema,
   updateLoanSchema,
+  writeOffLoanSchema,
 } from '@/modules/loans/validators';
 import { repaymentsQuerySchema } from '@/modules/repayments/validators';
 
@@ -177,6 +179,59 @@ const upload = multer({
  *     responses:
  *       200:
  *         description: Loan deleted successfully
+ * /api/v1/loans/{loan_id}/write-off:
+ *   post:
+ *     tags: [Loans]
+ *     summary: Write off a loan
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: loan_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [reason]
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 minLength: 10
+ *                 maxLength: 500
+ *     responses:
+ *       200:
+ *         description: Loan written off successfully
+ * /api/v1/loans/{loan_id}/early-maturity:
+ *   post:
+ *     tags: [Loans]
+ *     summary: Bring forward a loan maturity date
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: loan_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [maturityDate]
+ *             properties:
+ *               maturityDate:
+ *                 type: string
+ *                 format: date
+ *     responses:
+ *       200:
+ *         description: Loan early maturity applied successfully
  * /api/v1/loans/import/excel:
  *   post:
  *     tags: [Loans]
@@ -334,6 +389,20 @@ router.put(
   requireRole(Roles.ADMIN, Roles.LOAN_OFFICER, Roles.CREDIT_ANALYST),
   validate({ params: loanIdParamSchema, body: updateLoanSchema }),
   asyncHandler(loanController.update.bind(loanController))
+);
+router.post(
+  '/:loan_id/write-off',
+  authMiddleware,
+  requireRole(Roles.ADMIN),
+  validate({ params: loanIdParamSchema, body: writeOffLoanSchema }),
+  asyncHandler(loanController.writeOff.bind(loanController))
+);
+router.post(
+  '/:loan_id/early-maturity',
+  authMiddleware,
+  requireRole(Roles.ADMIN, Roles.LOAN_OFFICER),
+  validate({ params: loanIdParamSchema, body: earlyMaturityLoanSchema }),
+  asyncHandler(loanController.earlyMaturity.bind(loanController))
 );
 router.delete(
   '/:loan_id',

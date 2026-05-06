@@ -148,6 +148,20 @@ interface RepaymentImportPeriod {
   periodMonth: number;
 }
 
+export interface LoanWriteOffResult {
+  loan: LoanResponseDto;
+  priorStatus: string;
+  reason: string;
+}
+
+export interface LoanEarlyMaturityResult {
+  loan: LoanResponseDto;
+  priorEndDate: string;
+  newEndDate: string;
+  priorRepaymentAmount: number;
+  newRepaymentAmount: number;
+}
+
 const LEGACY_APPROVED_LOAN_STATUSES = new Set([
   ACTIVE_LOAN_STATUS,
   LEGACY_SUCCESS_LOAN_STATUS,
@@ -196,6 +210,19 @@ const cellAsDate = (value: unknown): Date => {
   const parsed = new Date(cellAsString(value));
   if (Number.isNaN(parsed.getTime())) {
     throw new Error(`Invalid date value "${cellAsString(value)}"`);
+  }
+
+  return parsed;
+};
+
+const toIsoDateOnly = (value: Date): string => value.toISOString().slice(0, 10);
+
+const parseIsoDateOnly = (value: string, fieldName: string): Date => {
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime()) || toIsoDateOnly(parsed) !== value) {
+    throw new ValidationError(
+      `${fieldName} must be a valid ISO date in YYYY-MM-DD format`
+    );
   }
 
   return parsed;
@@ -405,6 +432,85 @@ export class LoanService {
     });
 
     return toLoanResponse(loan);
+  }
+
+  async writeOff(loanId: number, reason: string): Promise<LoanWriteOffResult> {
+    return sequelize.transaction(async (transaction) => {
+      const loan = await LoanModel.findByPk(loanId, { transaction });
+      if (!loan) {
+        throw new NotFoundError('Loan not found');
+      }
+
+      ensureWriteOffReason(WRITE_OFF_LOAN_STATUS, reason);
+      const priorStatus = loan.status;
+
+      await loan.update(
+        {
+          status: WRITE_OFF_LOAN_STATUS,
+          message: reason,
+        },
+        { transaction }
+      );
+
+      return {
+        loan: toLoanResponse(loan),
+        priorStatus,
+        reason,
+      };
+    });
+  }
+
+  async earlyMaturity(
+    loanId: number,
+    maturityDate: string
+  ): Promise<LoanEarlyMaturityResult> {
+    return sequelize.transaction(async (transaction) => {
+      const loan = await LoanModel.findByPk(loanId, { transaction });
+      if (!loan) {
+        throw new NotFoundError('Loan not found');
+      }
+
+      const parsedMaturityDate = parseIsoDateOnly(maturityDate, 'maturityDate');
+      const priorEndDate = toIsoDateOnly(loan.endDate);
+      const loanStartDate = toIsoDateOnly(loan.startDate);
+
+      if (maturityDate < loanStartDate) {
+        throw new ValidationError(
+          'maturityDate must be on or after the loan start date'
+        );
+      }
+
+      if (maturityDate >= priorEndDate) {
+        throw new ValidationError(
+          'maturityDate must be earlier than the current loan end date'
+        );
+      }
+
+      if (loan.amountDue === null) {
+        throw new ValidationError(
+          'Loan amountDue is required to apply early maturity'
+        );
+      }
+
+      const priorRepaymentAmount = Number(loan.repaymentAmount);
+      const newRepaymentAmount = Number(Number(loan.amountDue).toFixed(2));
+
+      await loan.update(
+        {
+          endDate: parsedMaturityDate,
+          repaymentAmount: newRepaymentAmount,
+        },
+        { transaction }
+      );
+
+      return {
+        loan: toLoanResponse(loan),
+        priorEndDate,
+        newEndDate: maturityDate,
+        priorRepaymentAmount,
+        newRepaymentAmount,
+      };
+    });
   }
 
   async getDetails(loanId: number): Promise<{

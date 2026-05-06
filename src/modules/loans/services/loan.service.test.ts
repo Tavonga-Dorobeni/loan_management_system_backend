@@ -267,3 +267,108 @@ describe('LoanService update', () => {
     expect(loan.update).not.toHaveBeenCalled();
   });
 });
+
+describe('LoanService lifecycle actions', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('writes off a loan with the provided reason', async () => {
+    const transactionToken = {} as never;
+    const loan = {
+      id: 31,
+      borrowerId: 8,
+      referenceNumber: 'LN-WO-031',
+      type: 'SALARY_ADVANCE',
+      status: 'ACTIVE',
+      startDate: new Date('2026-01-01T00:00:00.000Z'),
+      endDate: new Date('2026-12-31T00:00:00.000Z'),
+      disbursementDate: new Date('2026-01-05T00:00:00.000Z'),
+      repaymentAmount: 100,
+      totalAmount: 1200,
+      amountPaid: 300,
+      amountDue: 900,
+      message: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-05-06T00:00:00.000Z'),
+      update: jest.fn().mockImplementation(async (values: Record<string, unknown>) => {
+        Object.assign(loan, values);
+      }),
+    };
+
+    mockTransaction(transactionToken);
+    jest.spyOn(LoanModel, 'findByPk').mockResolvedValue(loan as never);
+
+    const result = await loanService.writeOff(
+      31,
+      'Board-approved write-off after collections review'
+    );
+
+    expect(LoanModel.findByPk).toHaveBeenCalledWith(31, { transaction: transactionToken });
+    expect(loan.update).toHaveBeenCalledWith(
+      {
+        status: 'WRITE-OFF',
+        message: 'Board-approved write-off after collections review',
+      },
+      { transaction: transactionToken }
+    );
+    expect(result).toEqual({
+      loan: expect.objectContaining({
+        id: 31,
+        status: 'WRITE-OFF',
+        message: 'Board-approved write-off after collections review',
+      }),
+      priorStatus: 'ACTIVE',
+      reason: 'Board-approved write-off after collections review',
+    });
+  });
+
+  it('applies early maturity by bringing endDate forward and setting repaymentAmount to amountDue', async () => {
+    const transactionToken = {} as never;
+    const loan = {
+      id: 41,
+      borrowerId: 8,
+      referenceNumber: 'LN-EM-041',
+      type: 'SALARY_ADVANCE',
+      status: 'ACTIVE',
+      startDate: new Date('2026-01-01T00:00:00.000Z'),
+      endDate: new Date('2026-12-31T00:00:00.000Z'),
+      disbursementDate: new Date('2026-01-05T00:00:00.000Z'),
+      repaymentAmount: 100,
+      totalAmount: 1200,
+      amountPaid: 300,
+      amountDue: 900,
+      message: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-05-06T00:00:00.000Z'),
+      update: jest.fn().mockImplementation(async (values: Record<string, unknown>) => {
+        Object.assign(loan, values);
+      }),
+    };
+
+    mockTransaction(transactionToken);
+    jest.spyOn(LoanModel, 'findByPk').mockResolvedValue(loan as never);
+
+    const result = await loanService.earlyMaturity(41, '2026-08-15');
+
+    expect(LoanModel.findByPk).toHaveBeenCalledWith(41, { transaction: transactionToken });
+    expect(loan.update).toHaveBeenCalledWith(
+      {
+        endDate: new Date('2026-08-15T00:00:00.000Z'),
+        repaymentAmount: 900,
+      },
+      { transaction: transactionToken }
+    );
+    expect(result).toEqual({
+      loan: expect.objectContaining({
+        id: 41,
+        endDate: '2026-08-15T00:00:00.000Z',
+        repaymentAmount: 900,
+      }),
+      priorEndDate: '2026-12-31',
+      newEndDate: '2026-08-15',
+      priorRepaymentAmount: 100,
+      newRepaymentAmount: 900,
+    });
+  });
+});

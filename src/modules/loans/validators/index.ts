@@ -3,7 +3,9 @@ import Joi from 'joi';
 import { createListQuerySchema } from '@/common/utils/list';
 
 export * from '@/modules/loans/validators/create-loan.validator';
+export * from '@/modules/loans/validators/early-maturity-loan.validator';
 export * from '@/modules/loans/validators/update-loan.validator';
+export * from '@/modules/loans/validators/write-off-loan.validator';
 
 export const loanIdParamSchema = Joi.object({
   loan_id: Joi.number().integer().positive().required(),

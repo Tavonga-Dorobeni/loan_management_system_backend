@@ -7,8 +7,23 @@ import { activityLogService } from '@/modules/activity_logs/services/activity-lo
 import { loanService } from '@/modules/loans/services/loan.service';
 import { notificationService } from '@/modules/notifications/services/notification.service';
 import { repaymentScheduleService } from '@/modules/repayments/services/schedule.service';
+import { UserModel } from '@/modules/users/model';
 
 export class LoanController {
+  private async getActorSummary(req: Request): Promise<string> {
+    if (!req.user) {
+      return 'System';
+    }
+
+    const actor = await UserModel.findByPk(req.user.id);
+    if (actor) {
+      return `${actor.firstName} ${actor.lastName} (${req.user.role})`;
+    }
+
+    const fallback = req.user.email ?? `User #${req.user.id}`;
+    return `${fallback} (${req.user.role})`;
+  }
+
   async list(req: Request, res: Response): Promise<Response> {
     const loans = await loanService.list({
       ...toListQueryParams(req.query as Record<string, unknown>),
@@ -122,6 +137,60 @@ export class LoanController {
       sourceType: 'api',
     });
     return sendSuccess(res, result, 'Loan deleted successfully');
+  }
+
+  async writeOff(req: Request, res: Response): Promise<Response> {
+    const result = await loanService.writeOff(
+      Number(req.params.loan_id),
+      req.body.reason as string
+    );
+    const actorSummary = await this.getActorSummary(req);
+
+    await activityLogService.record({
+      actorUserId: req.user?.id,
+      actorRole: req.user?.role,
+      entityType: 'loan',
+      entityId: result.loan.id,
+      action: 'loan.write_off',
+      summary: `${actorSummary} wrote off Loan ${result.loan.referenceNumber}: ${result.reason}`,
+      metadata: {
+        from: result.priorStatus,
+        reason: result.reason,
+      },
+      sourceType: 'api',
+    });
+
+    return sendSuccess(res, result.loan, 'Loan written off successfully');
+  }
+
+  async earlyMaturity(req: Request, res: Response): Promise<Response> {
+    const result = await loanService.earlyMaturity(
+      Number(req.params.loan_id),
+      req.body.maturityDate as string
+    );
+    const actorSummary = await this.getActorSummary(req);
+
+    await activityLogService.record({
+      actorUserId: req.user?.id,
+      actorRole: req.user?.role,
+      entityType: 'loan',
+      entityId: result.loan.id,
+      action: 'loan.early_maturity',
+      summary: `${actorSummary} brought forward maturity on Loan ${result.loan.referenceNumber} to ${result.newEndDate}`,
+      metadata: {
+        priorEndDate: result.priorEndDate,
+        newEndDate: result.newEndDate,
+        priorRepaymentAmount: result.priorRepaymentAmount,
+        newRepaymentAmount: result.newRepaymentAmount,
+      },
+      sourceType: 'api',
+    });
+
+    return sendSuccess(
+      res,
+      result.loan,
+      'Loan early maturity applied successfully'
+    );
   }
 
   async getDetails(req: Request, res: Response): Promise<Response> {
